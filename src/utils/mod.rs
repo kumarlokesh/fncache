@@ -3,11 +3,13 @@
 use std::time::Duration;
 
 /// Converts a Duration to seconds as f64
+#[allow(dead_code)]
 pub fn duration_to_secs(duration: Duration) -> f64 {
     duration.as_secs() as f64 + f64::from(duration.subsec_nanos()) * 1e-9
 }
 
 /// Converts seconds as f64 to a Duration
+#[allow(dead_code)]
 pub fn secs_to_duration(secs: f64) -> Duration {
     let secs = secs.max(0.0);
     let nanos = (secs.fract() * 1_000_000_000.0) as u32;

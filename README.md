@@ -86,25 +86,26 @@ async fn fetch_data(id: &str) -> Result<String> {
 
 ## Roadmap
 
-### Phase 1: MVP - In-Memory Cache (v0.1.0)
+### Phase 1: MVP - In-Memory Cache (v0.1.0) ✓
 
-- [ ] Attribute macro: `#[fncache(ttl = 30)]`
-- [ ] Basic key derivation from function arguments
-- [ ] Thread-safe in-memory storage with `dashmap`
-- [ ] Time-based expiry (TTL)
-- [ ] Basic metrics (hit/miss counts)
+- [x] Attribute macro: `#[fncache(ttl = 30)]`
+- [x] Basic key derivation from function arguments
+- [x] Thread-safe in-memory storage
+- [x] Time-based expiry (TTL)
+- [x] Basic metrics (hit/miss counts)
 
-### Phase 2: Pluggable Backends (v0.2.0)
+### Phase 2: Pluggable Backends (v0.2.0) ✓
 
-- [ ] `CacheBackend` trait definition
-- [ ] Redis backend using `redis-rs`
-- [ ] File-based backend (serde + bincode/zstd)
-- [ ] RocksDB backend (optional)
-- [ ] Feature flags for backends
+- [x] `CacheBackend` trait definition
+- [x] File-based backend (serde + bincode)
+- [x] Redis backend using `redis-rs`
+- [x] RocksDB backend
+- [x] Custom serialization support
+- [x] Feature flags for backends
 
 ### Phase 3: Advanced Features (v0.3.0)
 
-- [ ] Cache invalidation via tags/prefixes
+- [x] Cache invalidation via tags/prefixes
 - [ ] Background cache warming
 - [ ] Advanced metrics (latency, size)
 - [ ] Compile-time key derivation
@@ -122,7 +123,7 @@ async fn fetch_data(id: &str) -> Result<String> {
 
 ```mermaid
 graph TD
-    A[User Code] -->|Decorated with #[fncache]| B[fncache Macro]
+    A[User Code] -->|Uses fncache attribute| B[fncache Macro]
     B --> C[Cache Manager]
     C -->|Delegates to| D[Backend Trait]
     D --> E[Memory Backend]

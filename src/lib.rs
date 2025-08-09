@@ -18,13 +18,21 @@
 //! ```
 
 use backends::CacheBackend;
-use error::Error;
 use std::sync::{Mutex, OnceLock};
 
 pub mod backends;
 pub mod error;
+pub mod eviction;
+pub mod invalidation;
 pub mod metrics;
+pub mod serialization;
 mod utils;
+
+#[cfg(test)]
+mod invalidation_tests;
+
+#[cfg(test)]
+mod eviction_tests;
 
 // Re-export error type for macro usage
 pub use error::Error as FncacheError;
@@ -97,7 +105,7 @@ where
     let global_cache = GlobalCache(Box::new(backend));
     GLOBAL_CACHE
         .set(Mutex::new(global_cache))
-        .map_err(|_| Error::AlreadyInitialized)?;
+        .map_err(|_| error::Error::AlreadyInitialized)?;
     Ok(())
 }
 
@@ -132,6 +140,7 @@ pub fn global_cache() -> &'static Mutex<GlobalCache> {
 ///
 /// Panics if the global cache has not been initialized.
 #[cfg(any(test, feature = "test-utils"))]
+#[allow(static_mut_refs)]
 pub fn global_cache() -> &'static Mutex<GlobalCache> {
     unsafe {
         GLOBAL_CACHE

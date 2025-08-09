@@ -3,7 +3,13 @@
 use async_trait::async_trait;
 use std::{fmt::Debug, time::Duration};
 
+#[cfg(feature = "file-backend")]
+pub mod file;
 pub mod memory;
+#[cfg(feature = "redis-backend")]
+pub mod redis;
+#[cfg(feature = "rocksdb-backend")]
+pub mod rocksdb;
 
 /// A key in the cache.
 pub type Key = String;

@@ -22,6 +22,10 @@ pub enum Error {
     #[error("global cache has already been initialized")]
     AlreadyInitialized,
 
+    /// The requested feature is not implemented.
+    #[error("Feature not implemented: {0}")]
+    NotImplemented(String),
+
     /// An error that doesn't fit into other categories.
     #[error("Cache error: {0}")]
     Other(String),
@@ -41,3 +45,10 @@ impl Error {
 
 /// A specialized `Result` type for cache operations.
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Implement From<std::io::Error> for Error to allow the use of ? with I/O operations
+impl From<std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Self {
+        Error::Backend(format!("I/O error: {}", error))
+    }
+}
