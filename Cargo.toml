@@ -1,0 +1,65 @@
+[workspace]
+members = [
+    ".",
+    "fncache-macros",
+]
+
+[package]
+name = "fncache"
+version = "0.1.0"
+edition = "2021"
+authors = ["Lokesh Kumar <lkumar94@gmail.com>"]
+description = "A zero-boilerplate Rust library for function-level caching with pluggable backends"
+repository = "https://github.com/kumarlokesh/fncache"
+license = "MIT"
+keywords = ["cache", "memoization", "performance", "macro"]
+categories = ["caching", "asynchronous", "web-programming"]
+
+[features]
+default = ["memory", "serde"]
+memory = ["dashmap", "tokio"]
+redis-backend = ["dep:redis", "serde_json"]
+file-backend = ["dep:serde", "dep:bincode", "dep:zstd"]
+rocksdb-backend = ["dep:rocksdb", "dep:bincode"]
+metrics = ["dep:metrics"]
+serde = ["dep:serde"]
+test-utils = []
+
+[dependencies]
+# Core dependencies
+async-trait = "0.1.72"
+thiserror = "1.0.50"
+serde = { version = "1.0.188", features = ["derive"], optional = true } # Optional but in default features
+serde_json = { version = "1.0.107", optional = true }
+fncache-macros = { path = "./fncache-macros", version = "0.1.0" }
+
+# Backend dependencies
+dashmap = { version = "5.5.0", optional = true }
+tokio = { version = "1.32.0", features = ["sync", "rt-multi-thread", "macros", "rt"], optional = true }
+redis = { version = "0.23.3", optional = true, features = ["tokio-comp"] }
+bincode = { version = "1.3.3", optional = true }
+zstd = { version = "0.12.4", optional = true }
+rocksdb = { version = "0.21.0", optional = true }
+futures = { version = "0.3.28", optional = true }
+
+# Metrics
+metrics = { version = "0.21.1", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.32.0", features = ["full"] }
+serial_test = "2.0.0"
+futures = "0.3.28"
+bincode = "1.3.3"
+serde = { version = "1.0.188", features = ["derive"] }
+
+
+[lib]
+proc-macro = false
+
+[[example]]
+name = "basic"
+required-features = ["memory"]
+
+[[example]]
+name = "async"
+required-features = ["memory"]

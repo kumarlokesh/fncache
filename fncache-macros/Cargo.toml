@@ -1,0 +1,16 @@
+[package]
+name = "fncache-macros"
+version = "0.1.0"
+edition = "2021"
+authors = ["Lokesh Kumar <lkumar94@gmail.com>"]
+description = "Procedural macros for the fncache crate"
+repository = "https://github.com/kumarlokesh/fncache"
+license = "MIT"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0.69"
+quote = "1.0.33"
+syn = { version = "1.0", features = ["full", "visit-mut", "extra-traits"] }
