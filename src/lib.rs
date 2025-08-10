@@ -24,6 +24,7 @@ pub mod backends;
 pub mod error;
 pub mod eviction;
 pub mod invalidation;
+pub mod key_derivation;
 pub mod metrics;
 pub mod serialization;
 mod utils;
@@ -34,6 +35,9 @@ mod invalidation_tests;
 
 #[cfg(test)]
 mod eviction_tests;
+
+#[cfg(test)]
+mod key_derivation_tests;
 
 #[cfg(test)]
 mod metrics_tests;

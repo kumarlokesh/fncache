@@ -24,6 +24,7 @@ rocksdb-backend = ["dep:rocksdb", "bincode"]
 bincode = ["dep:bincode"]
 metrics = ["dep:metrics"]
 serde = ["dep:serde"]
+compile-time-keys = []
 test-utils = []
 
 [dependencies]
