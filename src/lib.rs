@@ -45,6 +45,10 @@ mod metrics_tests;
 // Re-export error type for macro usage
 pub use error::Error as FncacheError;
 
+// Re-export backends for easier access
+#[cfg(feature = "wasm")]
+pub use backends::wasm::WasmStorageBackend;
+
 /// Internal structure to hold the cache backend
 #[derive(Debug)]
 pub struct GlobalCache(Box<dyn CacheBackend + Send + Sync>);

@@ -10,6 +10,8 @@ pub mod memory;
 pub mod redis;
 #[cfg(feature = "rocksdb-backend")]
 pub mod rocksdb;
+#[cfg(feature = "wasm")]
+pub mod wasm;
 
 /// A key in the cache.
 pub type Key = String;

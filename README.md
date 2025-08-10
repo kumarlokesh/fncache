@@ -108,7 +108,7 @@ async fn fetch_data(id: &str) -> Result<String> {
 - [x] Cache invalidation via tags/prefixes
 - [x] Background cache warming
 - [x] Advanced metrics (latency, size)
-- [ ] Compile-time key derivation
+- [x] Compile-time key derivation
 - [ ] WASM support
 
 ### Phase 4: Production Ready (v1.0.0)
