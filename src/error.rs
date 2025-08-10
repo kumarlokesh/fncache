@@ -26,6 +26,14 @@ pub enum Error {
     #[error("Feature not implemented: {0}")]
     NotImplemented(String),
 
+    /// An error occurred when acquiring a lock.
+    #[error("Failed to acquire lock")]
+    LockError,
+
+    /// The requested key was not found in the registered warmers.
+    #[error("Key not found in registered warmers")]
+    KeyNotFound,
+
     /// An error that doesn't fit into other categories.
     #[error("Cache error: {0}")]
     Other(String),

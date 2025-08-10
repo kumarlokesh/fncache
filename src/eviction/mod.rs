@@ -106,7 +106,6 @@ where
 /// Discards the least frequently used items first.
 #[derive(Debug)]
 pub struct LfuPolicy<K: std::hash::Hash + std::cmp::Eq + Clone + Send + Sync + std::fmt::Debug> {
-    // Tracks access frequency for each key
     access_count: dashmap::DashMap<K, usize>,
 }
 
@@ -142,6 +141,12 @@ where
     }
 
     fn evict(&self, count: usize) -> EvictionResult<K> {
+        if count == 0 {
+            return EvictionResult {
+                keys_to_evict: Vec::new(),
+            };
+        }
+
         let mut entries: Vec<(K, usize)> = self
             .access_count
             .iter()
@@ -156,9 +161,10 @@ where
 
         entries.sort_by(|a, b| a.1.cmp(&b.1));
 
+        let to_take = std::cmp::min(count, entries.len());
         let keys_to_evict = entries
             .into_iter()
-            .take(count)
+            .take(to_take)
             .map(|(key, _count)| {
                 self.access_count.remove(&key);
                 key
@@ -182,7 +188,7 @@ where
     match policy_type.to_lowercase().as_str() {
         "lru" => Arc::new(LruPolicy::new()),
         "lfu" => Arc::new(LfuPolicy::new()),
-        _ => Arc::new(LruPolicy::new()), // Default to LRU
+        _ => Arc::new(LruPolicy::new()),
     }
 }
 

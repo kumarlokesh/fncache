@@ -45,20 +45,21 @@ mod tests {
             .set("key1".to_string(), vec![1, 2, 3], None)
             .await
             .unwrap();
+
+        backend.get(&"key1".to_string()).await.unwrap();
+        backend.get(&"key1".to_string()).await.unwrap();
+
         backend
             .set("key2".to_string(), vec![4, 5, 6], None)
             .await
             .unwrap();
-
-        backend.get(&"key1".to_string()).await.unwrap();
-        backend.get(&"key1".to_string()).await.unwrap();
-
         backend
             .set("key3".to_string(), vec![7, 8, 9], None)
             .await
             .unwrap();
 
         let store_len = backend.get_store_len().await;
+
         assert_eq!(
             store_len, 2,
             "Cache should have exactly 2 items, found {}",
@@ -100,6 +101,7 @@ mod tests {
             "Cache should have exactly 2 items, found {}",
             store_len
         );
+
         assert!(!backend.contains_key(&"key1".to_string()).await.unwrap());
         assert!(backend.contains_key(&"key2".to_string()).await.unwrap());
         assert!(backend.contains_key(&"key3".to_string()).await.unwrap());

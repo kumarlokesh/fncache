@@ -106,8 +106,8 @@ async fn fetch_data(id: &str) -> Result<String> {
 ### Phase 3: Advanced Features (v0.3.0)
 
 - [x] Cache invalidation via tags/prefixes
-- [ ] Background cache warming
-- [ ] Advanced metrics (latency, size)
+- [x] Background cache warming
+- [x] Advanced metrics (latency, size)
 - [ ] Compile-time key derivation
 - [ ] WASM support
 

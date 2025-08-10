@@ -40,10 +40,21 @@ pub struct MemoryBackend {
     eviction_policy: Arc<dyn EvictionPolicy<Key, Value>>,
 }
 
+impl Default for MemoryBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MemoryBackend {
     /// Creates a new `MemoryBackend` with default configuration.
     pub fn new() -> Self {
         Self::with_config(MemoryBackendConfig::default())
+    }
+
+    /// Returns a reference to the metrics instance
+    pub fn metrics(&self) -> &crate::metrics::Metrics {
+        &self.metrics
     }
 
     /// Creates a new `MemoryBackend` with the given configuration.
@@ -96,9 +107,7 @@ impl MemoryBackend {
 
         let eviction_result = self.eviction_policy.evict(to_evict);
 
-        // Make sure we actually evict items
         if eviction_result.keys_to_evict.is_empty() && to_evict > 0 {
-            // Log the issue - this indicates the eviction policy isn't working properly
             eprintln!("Warning: Eviction policy returned no keys to evict when {} items needed to be evicted", to_evict);
         }
 
@@ -117,47 +126,103 @@ impl MemoryBackend {
 #[async_trait]
 impl CacheBackend for MemoryBackend {
     async fn get(&self, key: &Key) -> crate::Result<Option<Value>> {
+        // Begin timing
+        let timing = self.metrics.begin_get_timing();
+
         self.cleanup_expired();
 
-        match self.store.get(key) {
-            Some(entry) => {
-                if let Some(expires_at) = entry.expires_at {
-                    if Instant::now() >= expires_at {
-                        self.metrics.record_miss();
-                        return Ok(None);
-                    }
+        let result = if let Some(entry) = self.store.get(key) {
+            if let Some(expires_at) = entry.expires_at {
+                if Instant::now() > expires_at {
+                    self.metrics.record_miss();
+                    self.store.remove(key);
+                    Ok(None)
+                } else {
+                    self.eviction_policy.on_access(key);
+
+                    self.metrics.record_hit();
+                    Ok(Some(entry.value.clone()))
                 }
+            } else {
                 self.eviction_policy.on_access(key);
+
                 self.metrics.record_hit();
                 Ok(Some(entry.value.clone()))
             }
-            None => {
-                self.metrics.record_miss();
-                Ok(None)
-            }
-        }
+        } else {
+            self.metrics.record_miss();
+            Ok(None)
+        };
+
+        self.metrics.record_get_latency(timing);
+
+        result
     }
 
     async fn set(&self, key: Key, value: Value, ttl: Option<Duration>) -> crate::Result<()> {
+        let timing = self.metrics.begin_set_timing();
+
+        let new_size = bincode::serialized_size(&value).unwrap_or(0) as usize;
+
+        let old_size = if let Some(old_entry) = self.store.get(&key) {
+            bincode::serialized_size(&old_entry.value).unwrap_or(0) as usize
+        } else {
+            0
+        };
+
+        let is_existing_key = self.store.contains_key(&key);
+        if !is_existing_key
+            && self.config.max_capacity > 0
+            && self.store.len() >= self.config.max_capacity
+        {
+            let to_evict = 1;
+            let eviction_result = self.eviction_policy.evict(to_evict);
+
+            for key_to_evict in eviction_result.keys_to_evict {
+                if let Some(evicted_entry) = self.store.get(&key_to_evict) {
+                    let evicted_size =
+                        bincode::serialized_size(&evicted_entry.value).unwrap_or(0) as usize;
+                    self.metrics.record_entry_removal(evicted_size);
+                }
+                self.store.remove(&key_to_evict);
+                self.metrics.record_eviction();
+            }
+        }
+
         let entry = CacheEntry {
             value: value.clone(),
             expires_at: ttl.map(|ttl| Instant::now() + ttl),
         };
 
-        self.eviction_policy.on_insert(&key, &value);
+        self.metrics.record_entry_size(old_size, new_size);
 
+        self.eviction_policy.on_insert(&key, &value);
         self.store.insert(key, entry);
         self.metrics.record_insertion();
 
-        self.enforce_capacity_limit();
+        if self.config.max_capacity > 0 && self.store.len() > self.config.max_capacity {
+            self.enforce_capacity_limit();
+        }
+
+        self.metrics.record_set_latency(timing);
 
         Ok(())
     }
 
     async fn remove(&self, key: &Key) -> crate::Result<()> {
+        let size = if let Some(entry) = self.store.get(key) {
+            bincode::serialized_size(&entry.value).unwrap_or(0) as usize
+        } else {
+            0
+        };
+
         self.eviction_policy.on_remove(key);
 
-        self.store.remove(key);
+        let removed = self.store.remove(key).is_some();
+        if removed && size > 0 {
+            self.metrics.record_entry_removal(size);
+        }
+
         Ok(())
     }
 

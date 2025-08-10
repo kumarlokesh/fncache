@@ -27,12 +27,16 @@ pub mod invalidation;
 pub mod metrics;
 pub mod serialization;
 mod utils;
+pub mod warming;
 
 #[cfg(test)]
 mod invalidation_tests;
 
 #[cfg(test)]
 mod eviction_tests;
+
+#[cfg(test)]
+mod metrics_tests;
 
 // Re-export error type for macro usage
 pub use error::Error as FncacheError;
