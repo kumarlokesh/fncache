@@ -1,7 +1,55 @@
-//! WebAssembly-specific backend implementation
+//! WebAssembly-specific backend implementation for browser environments.
 //!
-//! This backend uses browser's localStorage for cache storage when running in WASM environments.
-//! It's enabled with the `wasm` feature flag.
+//! This backend provides a cache implementation that uses the browser's localStorage
+//! for persistent storage when running in WebAssembly environments. It enables caching
+//! functionality in web applications compiled to WASM.
+//!
+//! # Features
+//!
+//! * Browser-based persistent storage via localStorage API
+//! * TTL (time-to-live) support using separate expiry timestamps
+//! * Automatic cleanup of expired entries on access
+//! * Efficient storage using JSON-serialized Uint8Array
+//! * Compatible with standard web browsers
+//!
+//! # Usage
+//!
+//! This backend is available when the `wasm` feature flag is enabled.
+//! It provides a way to cache function results in browser-based WASM applications.
+//!
+//! ```rust,no_run
+//! use fncache::{backends::wasm::WasmStorageBackend, init_global_cache, fncache};
+//! use std::time::Duration;
+//!
+//! #[wasm_bindgen(start)]
+//! pub fn start() -> Result<(), JsValue> {
+//!     // Initialize the WASM backend using browser localStorage
+//!     let backend = WasmStorageBackend::new().expect("Failed to initialize browser storage");
+//!     init_global_cache(backend).expect("Failed to initialize global cache");
+//!
+//!     // Define a cached function with TTL of 5 minutes
+//!     #[fncache(ttl = 300)]
+//!     fn compute_value(input: u32) -> Vec<u8> {
+//!         // Expensive computation that should be cached
+//!         vec![input as u8; 1024]
+//!     }
+//!
+//!     // Use the function - first call stores in localStorage
+//!     let _ = compute_value(42);
+//!     // Subsequent calls retrieve from localStorage until TTL expires
+//!     let _ = compute_value(42);
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
+//! # Implementation Details
+//!
+//! * Uses browser's localStorage API for persistent storage
+//! * Stores binary data as JSON-serialized Uint8Array
+//! * TTL is implemented using separate keys with timestamp prefixes
+//! * Keys are prefixed with "fncache_ttl_" for expiration tracking
+//! * Automatically cleans up expired entries when accessed
 
 #![cfg(feature = "wasm")]
 
@@ -15,7 +63,47 @@ use web_sys::{window, Storage};
 
 use std::time::Duration;
 
-/// A cache backend that uses browser's localStorage when running in WASM environments.
+/// A cache backend for WebAssembly that uses browser's localStorage API.
+///
+/// This backend provides persistent caching capability for WASM applications
+/// running in browsers by leveraging the localStorage API. It supports TTL-based
+/// expiration, binary data storage, and conforms to the `CacheBackend` trait.
+///
+/// # Features
+///
+/// * Browser-persistent storage across page reloads
+/// * TTL implementation with automatic expiration
+/// * Binary data storage using JSON serialization
+/// * Standard cache operations: get, set, remove, clear
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use fncache::backends::wasm::WasmStorageBackend;
+/// use std::time::Duration;
+///
+/// # async fn example() -> fncache::Result<()> {
+/// // Create a new WASM backend using browser's localStorage
+/// let backend = WasmStorageBackend::new()?;
+///
+/// // Store a value with 1-hour TTL
+/// let key = "user:profile:123".to_string();
+/// let value = b"{\"name\": \"John Doe\"}".to_vec();
+/// backend.set(key.clone(), value, Some(Duration::from_secs(3600))).await?;
+///
+/// // Retrieve the value later (even after page reload)
+/// if let Some(data) = backend.get(&key).await? {
+///     // Process retrieved data
+///     console_log!("Retrieved {} bytes of data", data.len());
+/// }
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Storage Format
+///
+/// * Values are stored as JSON-serialized Uint8Array objects
+/// * TTL information is stored in separate keys with "fncache_ttl_" prefix
 pub struct WasmStorageBackend {
     storage: Storage,
 }
@@ -62,6 +150,13 @@ impl WasmStorageBackend {
     }
 }
 
+/// Implementation of the CacheBackend trait for WasmStorageBackend
+///
+/// This implementation provides:
+/// * Browser-persistent storage via localStorage
+/// * TTL support with automatic expiration
+/// * Binary data storage through Uint8Array serialization
+/// * Automatic cleanup of expired entries
 #[async_trait]
 impl CacheBackend for WasmStorageBackend {
     async fn get(&self, key: &String) -> Result<Option<Vec<u8>>> {

@@ -1,7 +1,56 @@
 //! Redis cache backend implementation.
 //!
-//! This module provides a Redis-based cache backend that stores cache entries
-//! in a Redis server.
+//! This backend stores cache entries in a Redis database, providing a distributed
+//! and scalable caching solution. It's particularly useful for distributed applications,
+//! microservices, or any situation where cache data needs to be shared across multiple
+//! processes, services or servers.
+//!
+//! # Features
+//!
+//! * Distributed caching across multiple application instances
+//! * TTL (time-to-live) support using Redis native expiration
+//! * Key prefixing to prevent collisions in shared Redis instances
+//! * JSON serialization for storing complex values
+//! * Built-in metrics for hits, misses, and insertions
+//! * Async operations using tokio-based Redis client
+//!
+//! # Usage
+//!
+//! The Redis backend requires a connection URL to a Redis server and optionally
+//! a key prefix to avoid collisions with other data in the Redis database.
+//!
+//! ```rust,no_run
+//! use fncache::{backends::redis::RedisBackend, init_global_cache, fncache};
+//! use std::time::Duration;
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! // Initialize the Redis backend with connection URL and optional prefix
+//! let redis_url = "redis://127.0.0.1:6379";
+//! let backend = RedisBackend::new(redis_url, Some("myapp:")).await?;
+//! init_global_cache(backend)?;
+//!
+//! // Define a cached function with TTL of 60 seconds
+//! #[fncache(ttl = 60)]
+//! async fn fetch_user_data(user_id: u32) -> String {
+//!     println!("Fetching data for user {}", user_id);
+//!     // Simulating API call or database query
+//!     format!("user_data_{}", user_id)
+//! }
+//!
+//! // Call the function - first call fetches data
+//! let data1 = fetch_user_data(42).await;
+//! // Second call uses the cached value (from Redis)
+//! let data2 = fetch_user_data(42).await;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Implementation Details
+//!
+//! * Cache entries are serialized to JSON before storage
+//! * TTL is implemented using Redis's native expiration mechanism
+//! * All keys are prefixed (default: "fncache:") to avoid collisions
+//! * Clear operation only removes keys with the configured prefix
 
 use crate::{backends::CacheBackend, error::Error, metrics::Metrics, Result};
 use async_trait::async_trait;
@@ -14,17 +63,55 @@ use std::{
 };
 
 /// Entry stored in the Redis cache
+///
+/// This structure represents a single cache entry that's serialized to JSON
+/// and stored in Redis. It contains both the value bytes and creation timestamp.
 #[derive(Debug, Serialize, Deserialize)]
 struct CacheEntry {
     /// The cached value as bytes
     value: Vec<u8>,
-    /// When the entry was created
+    /// Unix timestamp (seconds since epoch) when the entry was created
+    /// Used for tracking age of entries in Redis
     created_at: u64,
 }
 
-/// Redis-based cache backend
+/// Redis-based cache backend for distributed caching
 ///
-/// This backend stores cache entries in a Redis server.
+/// This backend stores cache entries in a Redis server, allowing for distributed
+/// caching across multiple application instances or services. It supports TTL expiration,
+/// key prefixing, and metrics collection.
+///
+/// # Features
+///
+/// * Distributed caching with Redis
+/// * TTL support via Redis expiration
+/// * Key prefixing to prevent collisions
+/// * JSON serialization for values
+/// * Async operations
+/// * Metrics collection
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use fncache::backends::redis::RedisBackend;
+/// use std::time::Duration;
+///
+/// # async fn run() -> fncache::Result<()> {
+/// // Create a Redis backend with specific connection and prefix
+/// let backend = RedisBackend::new("redis://127.0.0.1:6379", Some("myapp:")).await?
+///
+/// // Store a value with 5-minute TTL
+/// let key = "user:profile:123".to_string();
+/// let value = b"{\"name\": \"John Doe\"}".to_vec();
+/// backend.set(key.clone(), value, Some(Duration::from_secs(300))).await?;
+///
+/// // Retrieve the value later
+/// if let Some(data) = backend.get(&key).await? {
+///     println!("Retrieved {} bytes from cache", data.len());
+/// }
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct RedisBackend {
     /// Redis client
@@ -86,6 +173,14 @@ impl RedisBackend {
     }
 }
 
+/// Implementation of the CacheBackend trait for RedisBackend
+///
+/// This implementation provides:
+/// * Distributed caching via Redis
+/// * JSON serialization for values
+/// * TTL support using Redis's native key expiration
+/// * Key prefixing to avoid collisions
+/// * Metrics for hits, misses and insertions
 #[async_trait]
 impl CacheBackend for RedisBackend {
     async fn get(&self, key: &String) -> Result<Option<Vec<u8>>> {

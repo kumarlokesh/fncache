@@ -33,6 +33,11 @@ pub trait EvictionPolicy<K, V>: Send + Sync + std::fmt::Debug {
     /// Returns a list of keys that should be evicted from the cache.
     fn evict(&self, count: usize) -> EvictionResult<K>;
 
+    /// Debug function to print internal state.
+    fn debug_state(&self) -> String {
+        String::from("No debug state available")
+    }
+
     /// Reset the policy's internal state.
     fn reset(&self);
 }
@@ -82,6 +87,7 @@ where
             .map(|entry| (entry.key().clone(), *entry.value()))
             .collect();
 
+        // Sort by timestamp - oldest (smallest timestamp) first
         entries.sort_by(|a, b| a.1.cmp(&b.1));
 
         let keys_to_evict = entries
@@ -94,6 +100,23 @@ where
             .collect();
 
         EvictionResult { keys_to_evict }
+    }
+
+    fn debug_state(&self) -> String {
+        let mut entries: Vec<(K, Instant)> = self
+            .access_order
+            .iter()
+            .map(|entry| (entry.key().clone(), *entry.value()))
+            .collect();
+
+        // Sort by timestamp - oldest (smallest timestamp) first
+        entries.sort_by(|a, b| a.1.cmp(&b.1));
+
+        let mut result = format!("LRU Policy: {} entries\n", entries.len());
+        for (i, (key, time)) in entries.iter().enumerate() {
+            result.push_str(&format!("  {}: {:?} @ {:?}\n", i, key, time));
+        }
+        result
     }
 
     fn reset(&self) {

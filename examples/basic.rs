@@ -2,11 +2,9 @@
 
 use fncache::{backends::memory::MemoryBackend, init_global_cache, Result};
 
-// Required for the macro to work
 use bincode;
 use futures;
 
-// Ensure the memory backend is available
 #[cfg(not(feature = "memory"))]
 compile_error!("This example requires the 'memory' feature to be enabled");
 

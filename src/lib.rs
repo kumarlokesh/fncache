@@ -1,7 +1,19 @@
 #![warn(missing_docs)]
 //! # fncache
 //!
-//! A zero-boilerplate Rust library for function-level caching with pluggable backends.
+//! A zero-boilerplate Rust library for function-level caching with pluggable backends, inspired by `functools.lru_cache` and `request-cache`.
+//!
+//! ## Features
+//!
+//! - **Zero Boilerplate**: Simple `#[fncache]` attribute for instant caching
+//! - **Pluggable Backends**: Memory, File, Redis, RocksDB support
+//! - **Async/Sync**: Seamless support for both synchronous and asynchronous functions
+//! - **Type Safety**: Strong typing throughout the caching layer with compile-time guarantees
+//! - **Advanced Metrics**: Built-in instrumentation with latency, hit rates, and size tracking
+//! - **Cache Invalidation**: Tag-based and prefix-based cache invalidation
+//! - **Background Warming**: Proactive cache population for improved performance
+//!
+//! ## Quick Start
 //!
 //! ```ignore
 //! // Example usage (not actually run in tests due to proc-macro limitations)
@@ -15,7 +27,29 @@
 //!     println!("Performing expensive operation for {}", x);
 //!     x * x
 //! }
+//!
+//! fn main() {
+//!     // First call executes the function
+//!     let result1 = expensive_operation(5);
+//!     println!("Result 1: {}", result1); // Takes time
+//!     
+//!     // Second call returns cached result
+//!     let result2 = expensive_operation(5);
+//!     println!("Result 2: {}", result2); // Returns immediately
+//! }
 //! ```
+//!
+//! ## Examples
+//!
+//! See the `examples/` directory for working code samples covering different aspects of the library:
+//!
+//! - `basic.rs` - Simple synchronous caching
+//! - `async.rs` - Asynchronous function caching
+//! - `backends_memory.rs` - Memory backend with various configurations
+//! - `backends_file.rs` - File-based persistent caching
+//! - `cache_invalidation.rs` - Different invalidation techniques
+//! - `key_derivation.rs` - Key derivation strategies
+//! - `error_handling.rs` - Error handling scenarios
 
 use backends::CacheBackend;
 use std::sync::{Mutex, OnceLock};
@@ -54,12 +88,12 @@ pub use backends::wasm::WasmStorageBackend;
 pub struct GlobalCache(Box<dyn CacheBackend + Send + Sync>);
 
 // Use a regular OnceLock for production code
-#[cfg(not(any(test, feature = "test-utils")))]
+#[cfg(not(any(debug_assertions, feature = "test-utils")))]
 static GLOBAL_CACHE: OnceLock<Mutex<GlobalCache>> = OnceLock::new();
 
-// Use a regular Mutex for tests, allowing reset
-#[cfg(any(test, feature = "test-utils"))]
-static mut GLOBAL_CACHE: Option<Mutex<GlobalCache>> = None;
+// Use OnceLock for tests too to avoid static mut issues
+#[cfg(any(debug_assertions, feature = "test-utils"))]
+static GLOBAL_CACHE: OnceLock<Mutex<GlobalCache>> = OnceLock::new();
 
 // Re-export commonly used items
 pub use backends::memory::MemoryBackend;
@@ -109,7 +143,7 @@ pub type Result<T> = std::result::Result<T, error::Error>;
 /// // Initialize with the in-memory backend
 /// init_global_cache(MemoryBackend::new()).unwrap();
 /// ```
-#[cfg(not(any(test, feature = "test-utils")))]
+#[cfg(not(any(debug_assertions, feature = "test-utils")))]
 pub fn init_global_cache<B>(backend: B) -> Result<()>
 where
     B: CacheBackend + Send + Sync + 'static,
@@ -122,15 +156,15 @@ where
 }
 
 /// Initialize the global cache with the specified backend (test version).
-#[cfg(any(test, feature = "test-utils"))]
+#[cfg(any(debug_assertions, feature = "test-utils"))]
 pub fn init_global_cache<B>(backend: B) -> Result<()>
 where
     B: CacheBackend + Send + Sync + 'static,
 {
-    // SAFETY: We're in test code and this is synchronized by tests using #[serial]
-    unsafe {
-        GLOBAL_CACHE = Some(Mutex::new(GlobalCache(Box::new(backend))));
-    }
+    let global_cache = GlobalCache(Box::new(backend));
+    GLOBAL_CACHE
+        .set(Mutex::new(global_cache))
+        .map_err(|_| error::Error::AlreadyInitialized)?;
     Ok(())
 }
 
@@ -139,7 +173,7 @@ where
 /// # Panics
 ///
 /// Panics if the global cache has not been initialized.
-#[cfg(not(any(test, feature = "test-utils")))]
+#[cfg(not(any(debug_assertions, feature = "test-utils")))]
 pub fn global_cache() -> &'static Mutex<GlobalCache> {
     GLOBAL_CACHE
         .get()
@@ -151,29 +185,25 @@ pub fn global_cache() -> &'static Mutex<GlobalCache> {
 /// # Panics
 ///
 /// Panics if the global cache has not been initialized.
-#[cfg(any(test, feature = "test-utils"))]
-#[allow(static_mut_refs)]
+#[cfg(any(debug_assertions, feature = "test-utils"))]
 pub fn global_cache() -> &'static Mutex<GlobalCache> {
-    unsafe {
-        GLOBAL_CACHE
-            .as_ref()
-            .expect("Global cache not initialized. Call init_global_cache first.")
-    }
+    GLOBAL_CACHE
+        .get()
+        .expect("Global cache not initialized. Call init_global_cache first.")
 }
 
 /// Reset the global cache for testing purposes.
 ///
 /// This should only be used in tests and never in production code.
 ///
-/// # Safety
-///
-/// This function should only be used in test code, using the test-utils feature.
-/// It allows resetting the global cache between tests to avoid AlreadyInitialized errors.
-#[cfg(any(test, feature = "test-utils"))]
+/// Note: Since OnceLock cannot be safely reset, this function is a no-op.
+/// Tests should use unique function names or separate test processes to avoid conflicts.
+/// Available in debug builds and when the "test-utils" feature is enabled.
+#[cfg(any(debug_assertions, feature = "test-utils"))]
 pub fn reset_global_cache_for_testing() {
-    unsafe {
-        GLOBAL_CACHE = None;
-    }
+    // OnceLock cannot be safely reset once initialized.
+    // This is a no-op to maintain API compatibility.
+    // Tests should use unique function names to avoid cache conflicts.
 }
 
 #[async_trait::async_trait]

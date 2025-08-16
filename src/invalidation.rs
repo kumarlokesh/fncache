@@ -1,7 +1,30 @@
-//! Cache invalidation functionality.
+//! # Cache Invalidation
 //!
-//! This module provides mechanisms for selectively invalidating cached items
-//! using tags and prefix matching.
+//! This module provides comprehensive mechanisms for selectively invalidating cached items
+//! using tags and prefix-based matching.
+//!
+//! ## Key Features
+//!
+//! - **Tag-based Invalidation**: Associate tags with cached items for group invalidation
+//! - **Prefix-based Invalidation**: Invalidate groups of items with key prefixes
+//! - **Bulk Operations**: Invalidate multiple tags or prefixes in a single call
+//! - **Both Sync and Async APIs**: Support for different programming models
+//!
+//! ## Usage Examples
+//!
+//! See `examples/cache_invalidation.rs` for comprehensive usage examples.
+//!
+//! ## Tag-Based Invalidation
+//!
+//! Tag-based invalidation allows associating metadata with cached entries
+//! for selective invalidation. This is useful for complex invalidation scenarios
+//! where keys alone don't provide enough context.
+//!
+//! ## Prefix-Based Invalidation
+//!
+//! Prefix-based invalidation relies on structured key naming to group
+//! related cache entries. For instance, all user profile data might use keys
+//! that start with `user:{id}:`
 
 use crate::serialization::Serializer;
 use crate::{backends::CacheBackend, error::Error, Result};
@@ -10,16 +33,52 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 /// Represents a tag attached to a cached item for invalidation purposes.
+///
+/// Tags allow you to associate metadata with cached items for group-based invalidation.
+/// Multiple cached items can share the same tag, making it possible to invalidate
+/// them all at once regardless of their key structure.
+///
+/// # Examples
+///
+/// ```
+/// use fncache::invalidation::Tag;
+///
+/// // Create tags in different ways
+/// let tag1 = Tag::new("user:123");
+/// let tag2: Tag = "role:admin".into();  // From &str
+/// let tag3 = Tag::from(String::from("product:456")); // From String
+///
+/// // Get the underlying string
+/// assert_eq!(tag1.as_str(), "user:123");
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Tag(String);
 
 impl Tag {
-    /// Create a new tag from a string
+    /// Create a new tag from any type that can be converted into a String.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fncache::invalidation::Tag;
+    ///
+    /// let tag1 = Tag::new("user:profile");
+    /// let tag2 = Tag::new(String::from("post:123"));
+    /// ```
     pub fn new<S: Into<String>>(tag: S) -> Self {
         Self(tag.into())
     }
 
-    /// Get the tag value as a string slice
+    /// Get the tag value as a string slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fncache::invalidation::Tag;
+    ///
+    /// let tag = Tag::new("category:books");
+    /// assert_eq!(tag.as_str(), "category:books");
+    /// ```
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -37,35 +96,160 @@ impl From<&str> for Tag {
     }
 }
 
-/// Cache invalidation functionality
+/// Cache invalidation functionality for synchronous context.
+///
+/// This trait provides methods to selectively invalidate cache entries
+/// using tags or key prefixes. It's designed for use in synchronous code
+/// where you don't need async/await.
+///
+/// Implementations will typically use a runtime internally to execute
+/// the async operations needed to interact with the underlying cache.
+///
+/// # Examples
+///
+/// ```no_run
+/// use fncache::{invalidation::{CacheInvalidation, InvalidationCache, Tag}, MemoryBackend};
+///
+/// // Create a cache with invalidation support
+/// let cache = InvalidationCache::new(MemoryBackend::new());
+///
+/// // Invalidate by tag
+/// cache.invalidate_tag(&Tag::new("user:123")).unwrap();
+///
+/// // Invalidate by prefix
+/// cache.invalidate_prefix("products:").unwrap();
+///
+/// // Invalidate multiple tags
+/// cache.invalidate_tags(vec![Tag::new("category:books"), Tag::new("category:movies")]).unwrap();
+/// ```
 pub trait CacheInvalidation {
-    /// Invalidate all cache entries with the given tag
+    /// Invalidate all cache entries with the given tag.
+    ///
+    /// This method finds all cache keys associated with the specified tag and removes them
+    /// from the cache. It also updates internal tracking structures to maintain consistency.
+    ///
+    /// # Arguments
+    ///
+    /// * `tag` - The tag to invalidate
+    ///
+    /// # Returns
+    ///
+    /// * `Result<()>` - Success or an error if invalidation failed
     fn invalidate_tag(&self, tag: &Tag) -> Result<()>;
 
-    /// Invalidate all cache entries with keys that start with the given prefix
+    /// Invalidate all cache entries with keys that start with the given prefix.
+    ///
+    /// This method finds all cache keys that start with the specified prefix and removes them
+    /// from the cache. It's useful for invalidating groups of related items.
+    ///
+    /// # Arguments
+    ///
+    /// * `prefix` - The key prefix to invalidate
+    ///
+    /// # Returns
+    ///
+    /// * `Result<()>` - Success or an error if invalidation failed
     fn invalidate_prefix(&self, prefix: &str) -> Result<()>;
 
-    /// Invalidate all cache entries with any of the given tags
+    /// Invalidate all cache entries with any of the given tags.
+    ///
+    /// This is a convenience method that invalidates multiple tags at once.
+    ///
+    /// # Arguments
+    ///
+    /// * `tags` - An iterator of tags to invalidate
+    ///
+    /// # Returns
+    ///
+    /// * `Result<()>` - Success or an error if invalidation failed
     fn invalidate_tags<I>(&self, tags: I) -> Result<()>
     where
         I: IntoIterator<Item = Tag>;
 
-    /// Invalidate all cache entries with keys that start with any of the given prefixes
+    /// Invalidate all cache entries with keys that start with any of the given prefixes.
+    ///
+    /// This is a convenience method that invalidates multiple prefixes at once.
+    ///
+    /// # Arguments
+    ///
+    /// * `prefixes` - An iterator of prefixes to invalidate
+    ///
+    /// # Returns
+    ///
+    /// * `Result<()>` - Success or an error if invalidation failed
     fn invalidate_prefixes<I>(&self, prefixes: I) -> Result<()>
     where
         I: IntoIterator<Item = String>;
 }
 
-/// Async version of cache invalidation functionality
+/// Async version of cache invalidation functionality.
+///
+/// This trait extends the basic `CacheBackend` with tag and prefix-based invalidation
+/// capabilities for asynchronous contexts. It provides async methods for invalidating
+/// cache entries by tags or key prefixes.
+///
+/// # Examples
+///
+/// ```no_run
+/// use fncache::{invalidation::{AsyncCacheInvalidation, InvalidationCache, Tag}, MemoryBackend};
+///
+/// async fn example() {
+///     // Create a cache with invalidation support
+///     let cache = InvalidationCache::new(MemoryBackend::new());
+///     
+///     // Invalidate by tag
+///     cache.invalidate_tag(&Tag::new("user:123")).await.unwrap();
+///     
+///     // Invalidate by prefix
+///     cache.invalidate_prefix("products:").await.unwrap();
+///     
+///     // Invalidate multiple tags
+///     let tags = vec![Tag::new("category:books"), Tag::new("category:movies")];
+///     cache.invalidate_tags(tags).await.unwrap();
+/// }
+/// ```
 #[async_trait]
 pub trait AsyncCacheInvalidation: Send + Sync + crate::backends::CacheBackend {
-    /// Get all keys associated with a specific tag
+    /// Get all keys associated with a specific tag.
+    ///
+    /// This internal method is used to retrieve the set of cache keys
+    /// that have been associated with a particular tag.
+    ///
+    /// # Arguments
+    ///
+    /// * `tag` - The tag to query
+    ///
+    /// # Returns
+    ///
+    /// A `HashSet` containing all keys associated with the tag
     fn get_keys_by_tag(&self, tag: &Tag) -> HashSet<String>;
 
-    /// Get all keys with a specific prefix
+    /// Get all keys with a specific prefix.
+    ///
+    /// This internal method is used to retrieve the set of cache keys
+    /// that begin with the specified prefix.
+    ///
+    /// # Arguments
+    ///
+    /// * `prefix` - The key prefix to query
+    ///
+    /// # Returns
+    ///
+    /// A `HashSet` containing all keys that start with the prefix
     fn get_keys_by_prefix(&self, prefix: &str) -> HashSet<String>;
 
     /// Invalidate all keys associated with the specified tag.
+    ///
+    /// Removes all cache entries that have been tagged with the given tag.
+    /// This is useful for group invalidation of related items.
+    ///
+    /// # Arguments
+    ///
+    /// * `tag` - The tag identifying the group of items to invalidate
+    ///
+    /// # Returns
+    ///
+    /// * `Result<()>` - Success or an error if invalidation failed
     async fn invalidate_tag(&self, tag: &Tag) -> Result<()> {
         let keys_to_remove = self.get_keys_by_tag(tag);
 
@@ -76,6 +260,17 @@ pub trait AsyncCacheInvalidation: Send + Sync + crate::backends::CacheBackend {
     }
 
     /// Invalidate all keys with the specified prefix.
+    ///
+    /// Removes all cache entries whose keys start with the given prefix.
+    /// This is useful for invalidating a collection of related items.
+    ///
+    /// # Arguments
+    ///
+    /// * `prefix` - The prefix identifying the group of items to invalidate
+    ///
+    /// # Returns
+    ///
+    /// * `Result<()>` - Success or an error if invalidation failed
     async fn invalidate_prefix(&self, prefix: &str) -> Result<()> {
         let keys_to_remove = self.get_keys_by_prefix(prefix);
 
@@ -85,7 +280,18 @@ pub trait AsyncCacheInvalidation: Send + Sync + crate::backends::CacheBackend {
         Ok(())
     }
 
-    /// Invalidate multiple tags at once
+    /// Invalidate multiple tags at once.
+    ///
+    /// This is a convenience method that invalidates all cache entries
+    /// associated with any of the specified tags.
+    ///
+    /// # Arguments
+    ///
+    /// * `tags` - An iterator of tags to invalidate
+    ///
+    /// # Returns
+    ///
+    /// * `Result<()>` - Success or an error if invalidation failed
     async fn invalidate_tags<I>(&self, tags: I) -> Result<()>
     where
         I: IntoIterator<Item = Tag> + Send,
@@ -98,7 +304,18 @@ pub trait AsyncCacheInvalidation: Send + Sync + crate::backends::CacheBackend {
         Ok(())
     }
 
-    /// Invalidate multiple prefixes at once
+    /// Invalidate multiple prefixes at once.
+    ///
+    /// This is a convenience method that invalidates all cache entries
+    /// whose keys start with any of the specified prefixes.
+    ///
+    /// # Arguments
+    ///
+    /// * `prefixes` - An iterator of prefixes to invalidate
+    ///
+    /// # Returns
+    ///
+    /// * `Result<()>` - Success or an error if invalidation failed
     async fn invalidate_prefixes<I>(&self, prefixes: I) -> Result<()>
     where
         I: IntoIterator<Item = String> + Send,
@@ -112,7 +329,29 @@ pub trait AsyncCacheInvalidation: Send + Sync + crate::backends::CacheBackend {
     }
 }
 
-/// Extended cache entry data structure that supports tags
+/// Extended cache entry data structure that supports associating tags with cached values.
+///
+/// This wrapper allows you to store a value along with tags for selective invalidation.
+/// It's particularly useful when you need to manage complex invalidation scenarios where
+/// simple key-based invalidation is insufficient.
+///
+/// # Examples
+///
+/// ```
+/// use fncache::invalidation::{Tag, TaggedCacheEntry};
+/// use std::collections::HashSet;
+///
+/// // Create a tagged entry with a single tag
+/// let entry1 = TaggedCacheEntry::new("cached value")
+///     .with_tag("user:123");
+///
+/// // Create a tagged entry with multiple tags
+/// let entry2 = TaggedCacheEntry::new(42)
+///     .with_tags(vec!["product:456", "category:electronics"]);
+///
+/// assert_eq!(entry1.value, "cached value");
+/// assert!(entry1.tags.contains(&Tag::new("user:123")));
+/// ```
 #[derive(Debug, Clone)]
 pub struct TaggedCacheEntry<T> {
     /// The cached value
@@ -122,7 +361,17 @@ pub struct TaggedCacheEntry<T> {
 }
 
 impl<T> TaggedCacheEntry<T> {
-    /// Create a new tagged cache entry
+    /// Create a new tagged cache entry with the given value and no tags.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fncache::invalidation::TaggedCacheEntry;
+    ///
+    /// let entry = TaggedCacheEntry::new("some value");
+    /// assert_eq!(entry.value, "some value");
+    /// assert!(entry.tags.is_empty());
+    /// ```
     pub fn new(value: T) -> Self {
         Self {
             value,
@@ -130,13 +379,40 @@ impl<T> TaggedCacheEntry<T> {
         }
     }
 
-    /// Add a tag to this cache entry
+    /// Add a single tag to this cache entry.
+    ///
+    /// This method consumes and returns self to enable method chaining.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fncache::invalidation::{Tag, TaggedCacheEntry};
+    ///
+    /// let entry = TaggedCacheEntry::new(123)
+    ///     .with_tag("user:456");
+    ///
+    /// assert!(entry.tags.contains(&Tag::new("user:456")));
+    /// ```
     pub fn with_tag(mut self, tag: impl Into<Tag>) -> Self {
         self.tags.insert(tag.into());
         self
     }
 
-    /// Add multiple tags to this cache entry
+    /// Add multiple tags to this cache entry.
+    ///
+    /// This method consumes and returns self to enable method chaining.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fncache::invalidation::{Tag, TaggedCacheEntry};
+    ///
+    /// let entry = TaggedCacheEntry::new("product info")
+    ///     .with_tags(vec!["product:789", "category:books"]);
+    ///
+    /// assert!(entry.tags.contains(&Tag::new("product:789")));
+    /// assert!(entry.tags.contains(&Tag::new("category:books")));
+    /// ```
     pub fn with_tags<I>(mut self, tags: I) -> Self
     where
         I: IntoIterator,

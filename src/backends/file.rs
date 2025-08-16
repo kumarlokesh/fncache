@@ -1,7 +1,54 @@
 //! File-based cache backend implementation.
 //!
-//! This module provides a file-based cache backend that stores cache entries
-//! in the local filesystem.
+//! This backend stores cache entries as individual files in the local filesystem,
+//! providing persistent storage between application restarts. It uses a simple directory
+//! structure with content-addressed storage based on key hashing to ensure proper
+//! filesystem compatibility.
+//!
+//! # Features
+//!
+//! * Persistent storage that survives application restarts
+//! * TTL (time-to-live) support for expiring entries
+//! * Automatic cleanup of expired entries
+//! * Thread-safe access using async locks
+//! * Built-in metrics for hits, misses, and insertions
+//! * Efficient storage with binary serialization
+//!
+//! # Usage
+//!
+//! The file backend requires a base directory path where it will store all cached data.
+//! It will automatically create the directory structure as needed.
+//!
+//! ```rust,no_run
+//! use fncache::{backends::file::FileBackend, init_global_cache, fncache};
+//! use std::time::Duration;
+//!
+//! // Initialize the file backend with a directory path
+//! let cache_dir = "/tmp/fncache";
+//! let backend = FileBackend::new(cache_dir).unwrap();
+//! init_global_cache(backend).unwrap();
+//!
+//! // Define a cached function with TTL of 60 seconds
+//! #[fncache(ttl = 60)]
+//! fn compute_value(input: u32) -> String {
+//!     println!("Computing value for {}", input);
+//!     format!("value_{}", input)
+//! }
+//!
+//! // Call the function - first time will execute and store result
+//! let result1 = compute_value(42);
+//! // Second call with same input will use the cached value
+//! let result2 = compute_value(42);
+//! ```
+//!
+//! # Storage Format
+//!
+//! The file backend stores each cache entry in its own file using a path derived from the key:
+//!
+//! - Keys are hashed for safe filenames
+//! - Files are organized in a two-level directory structure (first two characters of hash as directory)
+//! - Each entry is serialized using bincode format
+//! - Entries include both the value and optional expiration timestamp
 
 use crate::{backends::CacheBackend, error::Error, metrics::Metrics, Result};
 use serde::{Deserialize, Serialize};
@@ -15,18 +62,55 @@ use std::{
 use tokio::sync::RwLock;
 
 /// Entry stored in the file cache
+///
+/// This structure represents a single cache entry that's serialized to disk.
+/// It contains both the value bytes and optional expiration time.
 #[derive(Debug, Serialize, Deserialize)]
 struct CacheEntry {
     /// The cached value as bytes
     value: Vec<u8>,
     /// When the entry expires (if ever)
+    /// If None, the entry never expires
     expires_at: Option<SystemTime>,
 }
 
-/// File-based cache backend
+/// File-based cache backend for persistent storage
 ///
-/// This backend stores cache entries as individual files in a directory structure.
-/// Each key is hashed to create a file path, ensuring safe filenames.
+/// This backend stores cache entries as individual files in a directory structure,
+/// providing persistent cache storage that survives application restarts.
+/// Each key is hashed to create a safe file path, ensuring filesystem compatibility
+/// regardless of the characters in the original cache keys.
+///
+/// # Features
+///
+/// * Disk-based persistent storage
+/// * TTL (time-to-live) support
+/// * Automatic cleanup of expired entries
+/// * Thread-safe file access using async locks
+/// * Metrics collection
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use fncache::backends::file::FileBackend;
+/// use std::time::Duration;
+///
+/// # async fn run() -> fncache::Result<()> {
+/// // Create a file backend with a specific storage directory
+/// let backend = FileBackend::new("/path/to/cache")?
+///
+/// // Store a value with 5-minute TTL
+/// let key = "user:profile:123".to_string();
+/// let value = b"{\"name\": \"John Doe\"}".to_vec();
+/// backend.set(key.clone(), value, Some(Duration::from_secs(300))).await?;
+///
+/// // Retrieve the value later
+/// if let Some(data) = backend.get(&key).await? {
+///     println!("Retrieved {} bytes from cache", data.len());
+/// }
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct FileBackend {
     /// Base directory for cache files
@@ -152,6 +236,13 @@ impl FileBackend {
     }
 }
 
+/// Implementation of the CacheBackend trait for FileBackend
+///
+/// This implementation provides:
+/// * Thread-safe file operations using async locks
+/// * TTL support with automatic cleanup of expired entries
+/// * Metrics collection for hits, misses, and insertions
+/// * Bincode-based serialization for efficient storage
 #[async_trait::async_trait]
 impl CacheBackend for FileBackend {
     async fn get(&self, key: &String) -> Result<Option<Vec<u8>>> {

@@ -1,7 +1,55 @@
 //! RocksDB cache backend implementation.
 //!
-//! This module provides a RocksDB-based cache backend that stores cache entries
-//! in a local RocksDB database for high-performance persistent caching.
+//! This backend stores cache entries in a local RocksDB database, providing high-performance
+//! persistent caching with excellent read/write throughput and low latency. RocksDB is
+//! optimized for fast storage hardware (SSDs) and offers superior performance compared to
+//! traditional file-based storage for high-throughput caching needs.
+//!
+//! # Features
+//!
+//! * High-performance persistent caching
+//! * Optimized for SSDs and fast storage
+//! * Excellent read/write throughput
+//! * TTL (time-to-live) support for expiring entries
+//! * Automatic cleanup of expired entries on access
+//! * Built-in metrics for hits, misses, and insertions
+//! * Atomic operations for data integrity
+//!
+//! # Usage
+//!
+//! The RocksDB backend requires a directory path where it will store its database files.
+//! The directory will be created if it doesn't exist.
+//!
+//! ```rust,no_run
+//! use fncache::{backends::rocksdb::RocksDBBackend, init_global_cache, fncache};
+//! use std::time::Duration;
+//!
+//! // Initialize the RocksDB backend with a directory path
+//! let db_path = "/path/to/cache/db";
+//! let backend = RocksDBBackend::new(db_path).unwrap();
+//! init_global_cache(backend).unwrap();
+//!
+//! // Define a cached function with TTL of 1 hour
+//! #[fncache(ttl = 3600)]
+//! fn compute_expensive_value(input: u32) -> Vec<u8> {
+//!     println!("Computing expensive value for {}", input);
+//!     // Simulate expensive computation
+//!     vec![input as u8; 1024] // 1KB of data
+//! }
+//!
+//! // Call the function - first time will execute and store result
+//! let result1 = compute_expensive_value(42);
+//! // Second call with same input will use the cached value from RocksDB
+//! let result2 = compute_expensive_value(42);
+//! ```
+//!
+//! # Implementation Details
+//!
+//! * Cache entries are serialized using bincode for efficient binary storage
+//! * TTL is implemented by storing expiration timestamps with each entry
+//! * Expired entries are cleaned up when accessed
+//! * Key-value pairs are stored directly in RocksDB's native format
+//! * The clear operation iterates through all keys for deletion
 
 use crate::{backends::CacheBackend, error::Error, metrics::Metrics, Result};
 use async_trait::async_trait;
@@ -14,17 +62,60 @@ use std::{
 };
 
 /// Entry stored in the RocksDB cache
+///
+/// This structure represents a single cache entry that's serialized using bincode
+/// and stored in RocksDB. It contains both the value bytes and optional expiration time.
 #[derive(Debug, Serialize, Deserialize)]
 struct CacheEntry {
     /// The cached value as bytes
     value: Vec<u8>,
     /// When the entry expires (if ever)
+    /// If None, the entry never expires
     expires_at: Option<SystemTime>,
 }
 
-/// RocksDB-based cache backend
+/// RocksDB-based cache backend for high-performance persistent caching
 ///
-/// This backend stores cache entries in a RocksDB database for high-performance persistent caching.
+/// This backend stores cache entries in a RocksDB database, providing high-performance
+/// persistent caching optimized for SSDs and fast storage devices. It offers superior
+/// read/write performance compared to file-based backends, especially for large datasets.
+///
+/// # Features
+///
+/// * High-performance persistent storage
+/// * Optimized for SSDs and fast storage
+/// * TTL support with automatic expiration
+/// * Excellent read/write throughput
+/// * Atomic operations for data integrity
+/// * Metrics collection
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use fncache::backends::rocksdb::RocksDBBackend;
+/// use std::time::Duration;
+///
+/// # fn run() -> fncache::Result<()> {
+/// // Create a RocksDB backend with specific storage directory
+/// let backend = RocksDBBackend::new("/path/to/rocksdb")?;
+///
+/// // Store a value with 1-hour TTL
+/// let key = "user:profile:123".to_string();
+/// let value = b"{\"name\": \"John Doe\"}".to_vec();
+/// tokio::runtime::Runtime::new()?                   
+///     .block_on(async {
+///         backend.set(key.clone(), value, Some(Duration::from_secs(3600))).await?
+///         
+///         // Retrieve the value later
+///         if let Some(data) = backend.get(&key).await? {
+///             println!("Retrieved {} bytes from cache", data.len());
+///         }
+///         
+///         Ok::<(), fncache::error::Error>(())
+///     })?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct RocksDBBackend {
     /// RocksDB database handle
@@ -69,6 +160,14 @@ impl RocksDBBackend {
     }
 }
 
+/// Implementation of the CacheBackend trait for RocksDBBackend
+///
+/// This implementation provides:
+/// * High-performance persistent storage with RocksDB
+/// * TTL support with automatic cleanup of expired entries
+/// * Atomic read/write operations
+/// * Metrics for hits, misses and insertions
+/// * Bincode serialization for efficient binary storage
 #[async_trait]
 impl CacheBackend for RocksDBBackend {
     async fn get(&self, key: &String) -> Result<Option<Vec<u8>>> {
