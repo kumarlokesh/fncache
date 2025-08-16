@@ -130,9 +130,6 @@ See `benches/` for detailed benchmarks.
 
 ## Documentation
 
-- **[API Documentation](https://docs.rs/fncache)** - Complete API reference
-- **[Examples](docs/EXAMPLES.md)** - Comprehensive usage examples
-- **[Migration Guide](docs/MIGRATION.md)** - Upgrading between versions
 - **[Architecture](ARCHITECTURE.md)** - Internal design and architecture
 
 ## Changelog
