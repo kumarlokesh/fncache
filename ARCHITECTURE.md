@@ -119,10 +119,16 @@ The invalidation system enables selectively clearing cached values through tags 
 5. If not found, function is executed, result cached, then returned
 6. Invalidation tags/prefixes are maintained as needed
 
-## Future Improvements
+## Key Features
 
 - Eviction policies (LRU, LFU)
+- Compile-time key derivation optimization
+- Tag and prefix-based invalidation
+- Pluggable backends (Memory, File)
+- Thread-safe operations
+
+## Future Improvements
+
 - Background cache warming
 - More advanced metrics
-- Compile-time key derivation optimization
 - WASM support
