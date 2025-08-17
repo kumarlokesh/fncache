@@ -6,7 +6,7 @@ members = [
 
 [package]
 name = "fncache"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Lokesh Kumar <lkumar94@gmail.com>"]
 description = "A zero-boilerplate Rust library for function-level caching with pluggable backends"
@@ -34,7 +34,7 @@ async-trait = "0.1.72"
 thiserror = "1.0.50"
 serde = { version = "1.0.188", features = ["derive"], optional = true } # Optional but in default features
 serde_json = { version = "1.0.107", optional = true }
-fncache-macros = { path = "./fncache-macros", version = "0.1.0" }
+fncache-macros = { path = "./fncache-macros", version = "0.1.1" }
 futures = { version = "0.3.28" }
 
 # Backend dependencies
