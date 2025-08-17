@@ -87,7 +87,6 @@ where
             .map(|entry| (entry.key().clone(), *entry.value()))
             .collect();
 
-        // Sort by timestamp - oldest (smallest timestamp) first
         entries.sort_by(|a, b| a.1.cmp(&b.1));
 
         let keys_to_evict = entries
@@ -109,7 +108,6 @@ where
             .map(|entry| (entry.key().clone(), *entry.value()))
             .collect();
 
-        // Sort by timestamp - oldest (smallest timestamp) first
         entries.sort_by(|a, b| a.1.cmp(&b.1));
 
         let mut result = format!("LRU Policy: {} entries\n", entries.len());

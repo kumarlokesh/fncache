@@ -5,7 +5,7 @@
 //! 2. Compile-time key derivation - More efficient but with some limitations
 
 use fncache::{backends::memory::MemoryBackend, fncache, init_global_cache, Result};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 // Runtime key derivation (default)
 #[fncache(key_derivation = "runtime")]
@@ -35,7 +35,6 @@ fn with_compile_time_derivation(a: u32, b: String, c: bool) -> u32 {
 }
 
 fn main() -> Result<()> {
-    // Initialize cache
     init_global_cache(MemoryBackend::new())?;
 
     println!("Key Derivation Strategies Example");
@@ -79,7 +78,6 @@ fn main() -> Result<()> {
     let result3 = with_compile_time_derivation(42, "world".to_string(), true);
     println!("Different args result: {}", result3);
 
-    // Comparison
     println!("\n--- Benchmark: 1000 cache hits ---");
 
     // Runtime key derivation benchmark

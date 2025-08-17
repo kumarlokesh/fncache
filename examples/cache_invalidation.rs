@@ -14,7 +14,7 @@ use fncache::{
 };
 use std::time::Duration;
 
-#[fncache(ttl = 5)] // Short TTL for demonstration
+#[fncache(ttl = 5)]
 fn data_with_ttl(id: u32) -> String {
     println!("Computing data with TTL for id {}", id);
     format!("Data-{}", id)
@@ -40,12 +40,7 @@ fn get_config(name: &str) -> String {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize the global cache with a memory backend
-    // This will be used by the fncache macro for caching function results
     init_global_cache(MemoryBackend::new())?;
-
-    // Create a separate local cache for demonstrating invalidation
-    // We use InvalidationCache wrapper for explicit invalidation operations
     let inv_cache = InvalidationCache::new(MemoryBackend::new());
 
     // Example 1: TTL-based expiration
@@ -70,9 +65,7 @@ async fn main() -> Result<()> {
     let config2 = get_config("api_url");
     println!("Config (cached): {}", config2);
 
-    // Manually invalidate the key by removing it directly
     println!("Invalidating config:api_url...");
-    // Use the global cache's remove method
     let cache = fncache::global_cache();
     let cache_guard = cache.lock().unwrap();
     cache_guard.remove(&"config:api_url".to_string()).await?;
@@ -82,23 +75,17 @@ async fn main() -> Result<()> {
 
     // Example 3: Tag-based invalidation
     println!("\n--- Tag-based invalidation ---");
-    // Cache some user data
     let user1 = get_user_data(101);
     let user2 = get_user_data(102);
     println!("Users: {}, {}", user1, user2);
 
-    // Cache some product data
     let product1 = get_product_info(201);
     let product2 = get_product_info(202);
     println!("Products: {}, {}", product1, product2);
 
-    // Invalidate all items with the "user_data" tag
     println!("Invalidating 'user_data' tag...");
-    // For tag invalidation, we use our local InvalidationCache
-    // In a real application, you would use the same cache for both storage and invalidation
     inv_cache.invalidate_tag(&Tag::new("user_data"))?;
 
-    // To simulate the effect on the global cache, we'll also invalidate the key directly
     let cache = fncache::global_cache();
     let cache_guard = cache.lock().unwrap();
     cache_guard.remove(&"user_data:101".to_string()).await?;
@@ -106,22 +93,17 @@ async fn main() -> Result<()> {
 
     // User data should be recomputed, but product data should still be cached
     println!("After tag invalidation:");
-    println!("User data: {}", get_user_data(101)); // Should recompute
-    println!("Product info: {}", get_product_info(201)); // Should use cache
+    println!("User data: {}", get_user_data(101));
+    println!("Product info: {}", get_product_info(201));
 
     // Example 4: Prefix-based invalidation
     println!("\n--- Prefix-based invalidation ---");
-    // Cache multiple config items
     let db_config = get_config("db_url");
     let api_config = get_config("api_key");
     println!("Configs: {}, {}", db_config, api_config);
 
-    // Invalidate all items with the "config" prefix
     println!("Invalidating 'config' prefix...");
-    // For prefix invalidation, use our local InvalidationCache
     inv_cache.invalidate_prefix("config")?;
-
-    // Simulate the effect on the global cache
     let cache = fncache::global_cache();
     let cache_guard = cache.lock().unwrap();
     cache_guard.remove(&"config:db_url".to_string()).await?;
@@ -129,8 +111,8 @@ async fn main() -> Result<()> {
 
     // All config items should be recomputed
     println!("After prefix invalidation:");
-    println!("DB Config: {}", get_config("db_url")); // Should recompute
-    println!("API Config: {}", get_config("api_key")); // Should recompute
+    println!("DB Config: {}", get_config("db_url"));
+    println!("API Config: {}", get_config("api_key"));
 
     Ok(())
 }

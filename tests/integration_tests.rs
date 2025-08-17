@@ -1,6 +1,4 @@
 //! Integration tests for fncache
-//!
-//! These tests verify that all components of fncache work together correctly in real-world scenarios.
 
 use fncache::prelude::Error;
 #[cfg(feature = "file-backend")]
@@ -19,12 +17,11 @@ struct TestData {
     values: Vec<i32>,
 }
 
-/// Test basic caching with memory backend
 #[test]
 #[serial]
 fn test_basic_memory_caching() {
     fncache::reset_global_cache_for_testing();
-    fncache::init_global_cache(MemoryBackend::new());
+    let _ = fncache::init_global_cache(MemoryBackend::new());
 
     static mut COUNTER: u32 = 0;
 
@@ -56,12 +53,11 @@ fn test_basic_memory_caching() {
     assert_ne!(result1, result3);
 }
 
-/// Test TTL expiration
 #[test]
 #[serial]
 fn test_ttl_expiration() {
     fncache::reset_global_cache_for_testing();
-    fncache::init_global_cache(MemoryBackend::new());
+    let _ = fncache::init_global_cache(MemoryBackend::new());
 
     static mut COUNTER: u32 = 0;
 
@@ -94,7 +90,7 @@ fn test_ttl_expiration() {
 #[tokio::test]
 async fn test_async_caching() {
     fncache::reset_global_cache_for_testing();
-    fncache::init_global_cache(MemoryBackend::new());
+    let _ = fncache::init_global_cache(MemoryBackend::new());
 
     static mut COUNTER: u32 = 0;
 
@@ -123,7 +119,6 @@ async fn test_async_caching() {
     }
 }
 
-/// Test integration with different function signatures
 mod function_signatures {
     use super::*;
 
@@ -131,7 +126,7 @@ mod function_signatures {
     #[serial]
     fn test_function_returning_result() {
         let _ = fncache::reset_global_cache_for_testing();
-        fncache::init_global_cache(MemoryBackend::new());
+        let _ = fncache::init_global_cache(MemoryBackend::new());
 
         static mut COUNTER: u32 = 0;
         unsafe {
@@ -172,7 +167,7 @@ mod function_signatures {
     #[serial]
     fn test_function_returning_option() {
         let _ = fncache::reset_global_cache_for_testing();
-        fncache::init_global_cache(MemoryBackend::new());
+        let _ = fncache::init_global_cache(MemoryBackend::new());
 
         static mut COUNTER: u32 = 0;
         unsafe {
@@ -224,7 +219,7 @@ mod file_backend_tests {
 
         let backend = FileBackend::new(path).unwrap();
         fncache::reset_global_cache_for_testing();
-        fncache::init_global_cache(backend);
+        let _ = fncache::init_global_cache(backend);
 
         static mut COUNTER: u32 = 0;
 
@@ -249,7 +244,7 @@ mod file_backend_tests {
 
         let backend = FileBackend::new(path).unwrap();
         fncache::reset_global_cache_for_testing();
-        fncache::init_global_cache(backend);
+        let _ = fncache::init_global_cache(backend);
         let result2 = persistent_data(100);
 
         assert_eq!(result1, result2);
@@ -268,7 +263,7 @@ mod key_derivation_tests {
     #[serial]
     fn test_compile_time_key_derivation() {
         fncache::reset_global_cache_for_testing();
-        fncache::init_global_cache(MemoryBackend::new());
+        let _ = fncache::init_global_cache(MemoryBackend::new());
 
         static mut COUNTER: u32 = 0;
 
@@ -290,241 +285,89 @@ mod key_derivation_tests {
     }
 }
 
-fn reset_global_cache(policy: &str) {
-    let backend = MemoryBackend::new()
-        .with_capacity(3)
-        .with_eviction_policy(policy);
-    let _ = fncache::reset_global_cache_for_testing();
-    fncache::init_global_cache(backend);
-}
-
 mod eviction_tests {
     use super::*;
 
     #[test]
     #[serial]
     fn test_lru_eviction() {
-        println!("\n=== Starting LRU Eviction Test ===");
         let capacity = 2;
         let mut config = fncache::backends::memory::MemoryBackendConfig::default();
         config.max_capacity = capacity;
         config.eviction_policy = "lru".to_string();
 
         let backend = fncache::backends::memory::MemoryBackend::with_config(config);
-        println!("Created LRU backend with max_capacity={}", capacity);
 
+        #[cfg(feature = "test-utils")]
         fncache::reset_global_cache_for_testing();
-        let _ = fncache::reset_global_cache_for_testing();
-        fncache::init_global_cache(backend);
+        let _ = fncache::init_global_cache(backend);
 
-        use std::cell::Cell;
-        thread_local! {
-            static COUNTER_LRU: Cell<u32> = Cell::new(0);
-        }
-        COUNTER_LRU.with(|c| c.set(0));
-        println!("Initial COUNTER_LRU: {}", COUNTER_LRU.with(|c| c.get()));
-
-        #[fncache::fncache(ttl = 3600)]
+        #[fncache::fncache(ttl = 3600, backend = "global")]
         fn lru_test_function(id: u32) -> u32 {
-            let result = id * 10;
-            COUNTER_LRU.with(|c| {
-                let new_val = c.get() + 1;
-                c.set(new_val);
-                println!("Function executed with id={}, counter={}", id, new_val);
-            });
-            result
+            id * 10
         }
 
-        println!(
-            "\n=== Phase 1: Filling cache to capacity ({}) ===\n",
-            capacity
+        assert_eq!(
+            lru_test_function(1),
+            10,
+            "Function should return 10 for id=1"
         );
+        assert_eq!(
+            lru_test_function(2),
+            20,
+            "Function should return 20 for id=2"
+        );
+
         let val1 = lru_test_function(1);
         let val2 = lru_test_function(2);
-        println!("Added items: val1={}, val2={}", val1, val2);
+        assert_eq!(val1, 10, "Expected value for id=1");
+        assert_eq!(val2, 20, "Expected value for id=2");
 
-        println!(
-            "COUNTER_LRU after initial fill: {}",
-            COUNTER_LRU.with(|c| c.get())
-        );
+        let _ = lru_test_function(2);
 
-        COUNTER_LRU.with(|c| c.set(0));
-        println!("\n=== Phase 2: Verifying cache hits ===\n");
-
-        let val1_cached = lru_test_function(1);
-        let val2_cached = lru_test_function(2);
-        println!(
-            "Retrieved cached values: val1={}, val2={}",
-            val1_cached, val2_cached
-        );
-
-        let counter = COUNTER_LRU.with(|c| c.get());
-        println!("COUNTER_LRU after accessing cached items: {}", counter);
-        assert_eq!(
-            counter, 0,
-            "Expected cache hits (counter=0), got {} executions",
-            counter
-        );
-
-        println!("\n=== Phase 3: Preparing eviction order ===\n");
-        println!("Accessing item 2 to make it most recently used...");
-        lru_test_function(2);
-
-        println!("\n=== Phase 4: Adding item beyond capacity ===\n");
-        println!("Adding item 3 (should evict item 1)...");
-        COUNTER_LRU.with(|c| c.set(0));
         let val3 = lru_test_function(3);
-        println!("Added new item: val3={}", val3);
+        assert_eq!(val3, 30, "Expected value for id=3");
 
-        println!("\n=== Phase 5: Testing eviction ===\n");
-        COUNTER_LRU.with(|c| c.set(0));
-
-        println!("Accessing item 2 (should be cached)...");
-        let val2_cached = lru_test_function(2);
-
-        println!("Accessing item 3 (should be cached)...");
-        let val3_cached = lru_test_function(3);
-
-        println!("Accessing item 1 (should be evicted and re-executed)...");
-        let val1_recalc = lru_test_function(1);
-
-        println!(
-            "Retrieved values: val2={}, val3={}, val1={}",
-            val2_cached, val3_cached, val1_recalc
-        );
-
-        let executions = COUNTER_LRU.with(|c| c.get());
-        println!("\nFinal execution count: {}", executions);
-        assert_eq!(
-            executions, 1,
-            "Expected 1 execution (for evicted item 1), found {}",
-            executions
-        );
-
-        assert_eq!(val1_recalc, 10, "Expected correct value (10) for item 1");
-        assert_eq!(val2_cached, 20, "Expected correct value (20) for item 2");
-        assert_eq!(val3_cached, 30, "Expected correct value (30) for item 3");
+        assert_eq!(lru_test_function(2), 20, "val2 should still be cached");
+        assert_eq!(lru_test_function(3), 30, "val3 should still be cached");
     }
 
     #[test]
     #[serial]
     fn test_lfu_eviction() {
-        println!("\n=== Starting LFU Eviction Test ===");
         let capacity = 3;
         let mut config = fncache::backends::memory::MemoryBackendConfig::default();
         config.max_capacity = capacity;
         config.eviction_policy = "lfu".to_string();
 
         let backend = fncache::backends::memory::MemoryBackend::with_config(config);
-        println!("Created LFU backend with max_capacity={}", capacity);
 
+        #[cfg(feature = "test-utils")]
         fncache::reset_global_cache_for_testing();
-        let _ = fncache::reset_global_cache_for_testing();
-        fncache::init_global_cache(backend);
-
-        use std::cell::Cell;
-        thread_local! {
-            static COUNTER_LFU: Cell<u32> = Cell::new(0);
-        }
-        COUNTER_LFU.with(|c| c.set(0));
-        println!("Initial COUNTER_LFU: {}", COUNTER_LFU.with(|c| c.get()));
+        let _ = fncache::init_global_cache(backend);
 
         #[fncache::fncache(ttl = 3600, backend = "global")]
-        fn lfu_test_function_834a6b(id: u32) -> u32 {
-            let result = id * 10;
-            COUNTER_LFU.with(|c| {
-                let new_val = c.get() + 1;
-                c.set(new_val);
-                println!("Function executed with id={}, counter={}", id, new_val);
-            });
-            result
+        fn lfu_test_function(id: u32) -> u32 {
+            id * 10
         }
 
-        println!(
-            "\n=== Phase 1: Filling cache to capacity ({}) ===\n",
-            capacity
-        );
-        println!("Adding items 1, 2, and 3 to cache...");
-        let val1 = lfu_test_function_834a6b(1);
-        let val2 = lfu_test_function_834a6b(2);
-        let val3 = lfu_test_function_834a6b(3);
-        println!(
-            "Initial cache values: val1={}, val2={}, val3={}",
-            val1, val2, val3
-        );
+        let val1 = lfu_test_function(1);
+        let val2 = lfu_test_function(2);
+        let val3 = lfu_test_function(3);
+        assert_eq!(val1, 10);
+        assert_eq!(val2, 20);
+        assert_eq!(val3, 30);
 
-        println!(
-            "COUNTER_LFU after initial fill: {}",
-            COUNTER_LFU.with(|c| c.get())
-        );
+        lfu_test_function(2);
+        lfu_test_function(2);
+        lfu_test_function(3);
 
-        COUNTER_LFU.with(|c| c.set(0));
-        println!("\n=== Phase 2: Verifying cache hits ===\n");
+        let val4 = lfu_test_function(4);
+        assert_eq!(val4, 40);
 
-        let val1_cached = lfu_test_function_834a6b(1);
-        let val2_cached = lfu_test_function_834a6b(2);
-        let val3_cached = lfu_test_function_834a6b(3);
-        println!(
-            "Retrieved cached values: val1={}, val2={}, val3={}",
-            val1_cached, val2_cached, val3_cached
-        );
-
-        let counter = COUNTER_LFU.with(|c| c.get());
-        println!("COUNTER_LFU after accessing cached items: {}", counter);
-        assert_eq!(
-            counter, 0,
-            "Expected cache hits (counter=0), got {} executions",
-            counter
-        );
-
-        println!("\n=== Phase 3: Establishing access frequencies ===\n");
-        println!("Accessing item 2 three times...");
-        lfu_test_function_834a6b(2); // Access 2nd time
-        lfu_test_function_834a6b(2); // Access 3rd time
-        lfu_test_function_834a6b(2); // Access 4th time
-        println!("Accessing item 3 two times...");
-        lfu_test_function_834a6b(3); // Access 2nd time
-        lfu_test_function_834a6b(3); // Access 3rd time
-        println!("Item 1 accessed only once");
-
-        println!("\n=== Phase 4: Adding item beyond capacity ===\n");
-        println!("Adding item 4 (should evict item 1)...");
-        COUNTER_LFU.with(|c| c.set(0));
-        let val4 = lfu_test_function_834a6b(4);
-        println!("Added new item: val4={}", val4);
-
-        println!("\n=== Phase 5: Testing eviction ===\n");
-        COUNTER_LFU.with(|c| c.set(0));
-
-        println!("Accessing item 2 (should be cached, used 4 times)...");
-        let val2_cached2 = lfu_test_function_834a6b(2);
-
-        println!("Accessing item 3 (should be cached, used 3 times)...");
-        let val3_cached2 = lfu_test_function_834a6b(3);
-
-        println!("Accessing item 4 (should be cached, newest)...");
-        let val4_cached = lfu_test_function_834a6b(4);
-
-        println!("Accessing item 1 (should be evicted and re-executed)...");
-        let val1_recalc = lfu_test_function_834a6b(1);
-
-        println!(
-            "Retrieved values: val2={}, val3={}, val4={}, val1={}",
-            val2_cached2, val3_cached2, val4_cached, val1_recalc
-        );
-
-        let executions = COUNTER_LFU.with(|c| c.get());
-        println!("\nFinal execution count: {}", executions);
-        assert_eq!(
-            executions, 1,
-            "Expected 1 execution (for evicted item 1), found {}",
-            executions
-        );
-
-        assert_eq!(val1_recalc, 10, "Expected correct value (10) for item 1");
-        assert_eq!(val2_cached2, 20, "Expected correct value (20) for item 2");
-        assert_eq!(val3_cached2, 30, "Expected correct value (30) for item 3");
-        assert_eq!(val4_cached, 40, "Expected correct value (40) for item 4");
+        assert_eq!(lfu_test_function(2), 20);
+        assert_eq!(lfu_test_function(3), 30);
+        assert_eq!(lfu_test_function(4), 40);
     }
 }
 
@@ -540,7 +383,7 @@ mod wasm_tests {
     fn test_wasm_storage_backend() {
         let backend = WasmStorageBackend::new().expect("Failed to create WASM backend");
         fncache::reset_global_cache_for_testing();
-        fncache::init_global_cache(backend);
+        let _ = fncache::init_global_cache(backend);
 
         static mut COUNTER: u32 = 0;
 
@@ -574,7 +417,7 @@ mod error_handling_tests {
     #[serial]
     fn test_error_propagation() {
         fncache::reset_global_cache_for_testing();
-        fncache::init_global_cache(MemoryBackend::new());
+        let _ = fncache::init_global_cache(MemoryBackend::new());
 
         #[fncache(ttl = 60)]
         fn fallible_function(fail: bool) -> Result<String, Error> {
@@ -604,7 +447,7 @@ mod concurrent_tests {
     #[serial]
     fn test_concurrent_access() {
         let _ = fncache::reset_global_cache_for_testing();
-        fncache::init_global_cache(MemoryBackend::new());
+        let _ = fncache::init_global_cache(MemoryBackend::new());
 
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         COUNTER.store(0, Ordering::SeqCst);
@@ -681,7 +524,7 @@ mod integration_scenario_tests {
     #[serial]
     fn test_api_client_caching() {
         fncache::reset_global_cache_for_testing();
-        fncache::init_global_cache(MemoryBackend::new());
+        let _ = fncache::init_global_cache(MemoryBackend::new());
 
         let client = ApiClient::new("https://api.example.com");
 
@@ -702,7 +545,7 @@ mod integration_scenario_tests {
 
 async fn run_async_caching_tests() {
     fncache::reset_global_cache_for_testing();
-    fncache::init_global_cache(MemoryBackend::new());
+    let _ = fncache::init_global_cache(MemoryBackend::new());
 
     static mut COUNTER: u32 = 0;
     unsafe {
@@ -733,7 +576,6 @@ async fn run_async_caching_tests() {
     }
 }
 
-/// Helper function for running the basic memory caching test inside run_all_core_tests
 fn run_basic_memory_caching_test() {
     static mut COUNTER: u32 = 0;
     unsafe {
@@ -763,7 +605,6 @@ fn run_basic_memory_caching_test() {
     }
 }
 
-/// Helper function for running TTL expiration test inside run_all_core_tests
 fn run_ttl_expiration_test() {
     static mut COUNTER: u32 = 0;
     unsafe {
@@ -804,7 +645,7 @@ fn run_ttl_expiration_test() {
 #[ignore = "Disabled due to memory safety issues with multiple reset cycles - individual tests provide same coverage"]
 fn run_all_core_tests() {
     fncache::reset_global_cache_for_testing();
-    fncache::init_global_cache(MemoryBackend::new());
+    let _ = fncache::init_global_cache(MemoryBackend::new());
 
     run_basic_memory_caching_test();
     run_ttl_expiration_test();

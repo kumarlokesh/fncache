@@ -320,9 +320,6 @@ mod tests {
     use super::*;
     use serial_test::serial;
 
-    // These tests require a running Redis server at localhost:6379
-    // They're marked with #[ignore] by default to avoid breaking CI
-
     async fn create_test_backend() -> Result<RedisBackend> {
         RedisBackend::new("redis://127.0.0.1:6379", Some("test:")).await
     }

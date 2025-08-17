@@ -101,10 +101,8 @@ mod tests {
             value: 42,
         };
 
-        // Serialize
         let bytes = serializer.serialize(&value).unwrap();
 
-        // Deserialize
         let deserialized: TestStruct = serializer.deserialize(&bytes).unwrap();
 
         assert_eq!(value, deserialized);
@@ -120,10 +118,8 @@ mod tests {
             value: 42,
         };
 
-        // Serialize
         let bytes = serializer.serialize(&value).unwrap();
 
-        // Deserialize
         let deserialized: TestStruct = serializer.deserialize(&bytes).unwrap();
 
         assert_eq!(value, deserialized);

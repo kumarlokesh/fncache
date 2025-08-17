@@ -429,10 +429,7 @@ impl<T> TaggedCacheEntry<T> {
 #[derive(Debug)]
 pub struct InvalidationCache<B> {
     backend: Arc<B>,
-    // Map from tags to the set of keys that have this tag
     tag_to_keys: std::sync::Mutex<std::collections::HashMap<Tag, HashSet<String>>>,
-    // Map from key prefixes to the set of keys that start with this prefix
-    // For efficient prefix invalidation
     prefixes: std::sync::Mutex<std::collections::HashMap<String, HashSet<String>>>,
 }
 
@@ -598,7 +595,6 @@ where
     }
 }
 
-// Implement CacheBackend for InvalidationCache, forwarding to the inner backend
 #[async_trait]
 impl<B> crate::backends::CacheBackend for InvalidationCache<B>
 where
@@ -777,6 +773,4 @@ mod tests {
         assert_eq!(tag2, tag3);
         assert_eq!(tag1.as_str(), "user:123");
     }
-
-    // More tests would be added as we implement the actual invalidation logic
 }

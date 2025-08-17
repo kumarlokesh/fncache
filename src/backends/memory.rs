@@ -24,12 +24,12 @@
 //! // Set a value with a 10-second TTL
 //! backend.set(
 //!     "user:profile:123".to_string(),
-//!     serde_json::to_vec(&"User data").unwrap(),
+//!     b"User data".to_vec(), // Simple byte vector data
 //!     Some(Duration::from_secs(10))
 //! ).await?;
 //!
 //! // Get the value back
-//! let value = backend.get("user:profile:123").await?;
+//! let value = backend.get(&"user:profile:123".to_string()).await?;
 //!
 //! // Clear all entries
 //! backend.clear().await?;
@@ -219,7 +219,7 @@ impl MemoryBackend {
     ///
     /// println!("Cache hits: {}", metrics.hits());
     /// println!("Cache misses: {}", metrics.misses());
-    /// println!("Hit ratio: {:.2}%", metrics.hit_ratio() * 100.0);
+    /// println!("Hit ratio: {:.2}%", metrics.hit_rate() * 100.0);
     /// ```
     pub fn metrics(&self) -> &crate::metrics::Metrics {
         &self.metrics
@@ -401,7 +401,6 @@ impl MemoryBackend {
 #[async_trait]
 impl CacheBackend for MemoryBackend {
     async fn get(&self, key: &Key) -> crate::Result<Option<Value>> {
-        // Begin timing
         let timing = self.metrics.begin_get_timing();
 
         self.cleanup_expired();

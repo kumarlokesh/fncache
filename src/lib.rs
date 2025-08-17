@@ -38,18 +38,6 @@
 //!     println!("Result 2: {}", result2); // Returns immediately
 //! }
 //! ```
-//!
-//! ## Examples
-//!
-//! See the `examples/` directory for working code samples covering different aspects of the library:
-//!
-//! - `basic.rs` - Simple synchronous caching
-//! - `async.rs` - Asynchronous function caching
-//! - `backends_memory.rs` - Memory backend with various configurations
-//! - `backends_file.rs` - File-based persistent caching
-//! - `cache_invalidation.rs` - Different invalidation techniques
-//! - `key_derivation.rs` - Key derivation strategies
-//! - `error_handling.rs` - Error handling scenarios
 
 use backends::CacheBackend;
 use std::sync::{Mutex, OnceLock};
@@ -61,7 +49,6 @@ pub mod invalidation;
 pub mod key_derivation;
 pub mod metrics;
 pub mod serialization;
-mod utils;
 pub mod warming;
 
 #[cfg(test)]
@@ -76,10 +63,8 @@ mod key_derivation_tests;
 #[cfg(test)]
 mod metrics_tests;
 
-// Re-export error type for macro usage
 pub use error::Error as FncacheError;
 
-// Re-export backends for easier access
 #[cfg(feature = "wasm")]
 pub use backends::wasm::WasmStorageBackend;
 
@@ -87,15 +72,12 @@ pub use backends::wasm::WasmStorageBackend;
 #[derive(Debug)]
 pub struct GlobalCache(Box<dyn CacheBackend + Send + Sync>);
 
-// Use a regular OnceLock for production code
 #[cfg(not(any(debug_assertions, feature = "test-utils")))]
 static GLOBAL_CACHE: OnceLock<Mutex<GlobalCache>> = OnceLock::new();
 
-// Use OnceLock for tests too to avoid static mut issues
 #[cfg(any(debug_assertions, feature = "test-utils"))]
 static GLOBAL_CACHE: OnceLock<Mutex<GlobalCache>> = OnceLock::new();
 
-// Re-export commonly used items
 pub use backends::memory::MemoryBackend;
 
 /// Re-export of the proc macro for convenience.

@@ -1,159 +1,92 @@
 //! Thread-safe eviction test
-//!
-//! This test isolates the eviction policy testing to avoid segmentation faults
 
-use fncache::{self, backends::memory::MemoryBackend};
-use std::cell::Cell;
-use std::sync::Once;
-
-static INIT: Once = Once::new();
+use fncache::backends::memory::{MemoryBackend, MemoryBackendConfig};
+use fncache::backends::CacheBackend;
+use futures::executor::block_on;
+use serial_test::serial;
+use std::sync::Arc;
 
 #[test]
+#[serial]
 fn test_thread_safe_lru_eviction() {
-    INIT.call_once(|| {
-        #[cfg(feature = "test-utils")]
-        fncache::reset_global_cache_for_testing();
+    let config = MemoryBackendConfig {
+        max_capacity: 2,
+        eviction_policy: "lru".to_string(),
+        ..Default::default()
+    };
+    let backend = Arc::new(MemoryBackend::with_config(config));
 
-        let mut config = fncache::backends::memory::MemoryBackendConfig::default();
-        config.max_capacity = 2;
-        config.eviction_policy = "lru".to_string();
-        let backend = MemoryBackend::with_config(config);
-        let _ = fncache::init_global_cache(backend);
-    });
+    block_on(backend.clear()).unwrap();
 
-    thread_local! {
-        static COUNTER: Cell<u32> = Cell::new(0);
-    }
-    COUNTER.with(|c| c.set(0));
+    let key1 = "key1".to_string();
+    let key2 = "key2".to_string();
+    let key3 = "key3".to_string();
+    let val1 = vec![1, 2, 3];
+    let val2 = vec![4, 5, 6];
+    let val3 = vec![7, 8, 9];
 
-    #[fncache::fncache(ttl = 3600, backend = "global")]
-    fn safe_lru_test_fn(id: u32) -> u32 {
-        let result = id * 10;
-        COUNTER.with(|c| {
-            let new_val = c.get() + 1;
-            c.set(new_val);
-        });
-        result
-    }
+    block_on(backend.set(key1.clone(), val1.clone(), None)).unwrap();
+    block_on(backend.set(key2.clone(), val2.clone(), None)).unwrap();
 
-    let val1 = safe_lru_test_fn(1);
-    let val2 = safe_lru_test_fn(2);
+    let result1 = block_on(backend.get(&key1)).unwrap().unwrap();
+    let result2 = block_on(backend.get(&key2)).unwrap().unwrap();
+    assert_eq!(result1, val1);
+    assert_eq!(result2, val2);
 
-    assert_eq!(val1, 10);
-    assert_eq!(val2, 20);
-    assert_eq!(COUNTER.with(|c| c.get()), 2);
+    let _ = block_on(backend.get(&key1)).unwrap();
 
-    let val1_cached = safe_lru_test_fn(1);
-    let val2_cached = safe_lru_test_fn(2);
+    block_on(backend.set(key3.clone(), val3.clone(), None)).unwrap();
 
-    assert_eq!(val1_cached, 10);
-    assert_eq!(val2_cached, 20);
-    assert_eq!(COUNTER.with(|c| c.get()), 2);
+    let result1_again = block_on(backend.get(&key1)).unwrap();
+    assert!(result1_again.is_some(), "Key1 should still be in cache");
+    assert_eq!(result1_again.unwrap(), val1);
+    let result3 = block_on(backend.get(&key3)).unwrap();
+    assert!(result3.is_some(), "Key3 should be in cache");
+    assert_eq!(result3.unwrap(), val3);
 
-    let _val2_again = safe_lru_test_fn(2);
-
-    let val3 = safe_lru_test_fn(3);
-    assert_eq!(val3, 30);
-    assert_eq!(COUNTER.with(|c| c.get()), 3);
-
-    let val2_final = safe_lru_test_fn(2);
-    let val3_final = safe_lru_test_fn(3);
-    let val1_final = safe_lru_test_fn(1);
-    assert_eq!(val2_final, 20);
-    assert_eq!(val3_final, 30);
-    assert_eq!(val1_final, 10);
-    assert_eq!(
-        COUNTER.with(|c| c.get()),
-        4,
-        "Expected 1 new execution for evicted item 1"
-    );
+    let result2_again = block_on(backend.get(&key2)).unwrap();
+    assert!(result2_again.is_none(), "Key2 should have been evicted");
 }
 
 #[test]
+#[serial]
 fn test_thread_safe_lfu_eviction() {
-    static LFU_INIT: Once = Once::new();
-    LFU_INIT.call_once(|| {
-        #[cfg(feature = "test-utils")]
-        fncache::reset_global_cache_for_testing();
+    let config = MemoryBackendConfig {
+        max_capacity: 2,
+        eviction_policy: "lfu".to_string(),
+        ..Default::default()
+    };
+    let backend = Arc::new(MemoryBackend::with_config(config));
 
-        let mut config = fncache::backends::memory::MemoryBackendConfig::default();
-        config.max_capacity = 3;
-        config.eviction_policy = "lfu".to_string();
-        let backend = MemoryBackend::with_config(config);
+    block_on(backend.clear()).unwrap();
 
-        let _ = fncache::init_global_cache(backend);
-    });
+    let key1 = "key1".to_string();
+    let key2 = "key2".to_string();
+    let key3 = "key3".to_string();
+    let val1 = vec![1, 2, 3];
+    let val2 = vec![4, 5, 6];
+    let val3 = vec![7, 8, 9];
 
-    thread_local! {
-        static COUNTER_LFU: Cell<u32> = Cell::new(0);
-    }
-    COUNTER_LFU.with(|c| c.set(0));
+    block_on(backend.set(key1.clone(), val1.clone(), None)).unwrap();
+    block_on(backend.set(key2.clone(), val2.clone(), None)).unwrap();
 
-    #[fncache::fncache(ttl = 3600, backend = "global")]
-    fn safe_lfu_test_fn(id: u32) -> u32 {
-        let result = id * 10;
-        COUNTER_LFU.with(|c| {
-            let new_val = c.get() + 1;
-            c.set(new_val);
-        });
-        result
-    }
+    let result1 = block_on(backend.get(&key1)).unwrap().unwrap();
+    let result2 = block_on(backend.get(&key2)).unwrap().unwrap();
+    assert_eq!(result1, val1);
+    assert_eq!(result2, val2);
 
-    let val1 = safe_lfu_test_fn(1);
-    let val2 = safe_lfu_test_fn(2);
-    let val3 = safe_lfu_test_fn(3);
-    assert_eq!(val1, 10);
-    assert_eq!(val2, 20);
-    assert_eq!(val3, 30);
-    assert_eq!(
-        COUNTER_LFU.with(|c| c.get()),
-        3,
-        "Initial fill should execute function 3 times"
-    );
+    let _ = block_on(backend.get(&key2)).unwrap();
+    let _ = block_on(backend.get(&key2)).unwrap();
 
-    let val1_cached = safe_lfu_test_fn(1);
-    let val2_cached = safe_lfu_test_fn(2);
-    let val3_cached = safe_lfu_test_fn(3);
-    assert_eq!(val1_cached, 10);
-    assert_eq!(val2_cached, 20);
-    assert_eq!(val3_cached, 30);
-    assert_eq!(
-        COUNTER_LFU.with(|c| c.get()),
-        3,
-        "Cached access should not execute function"
-    );
+    block_on(backend.set(key3.clone(), val3.clone(), None)).unwrap();
 
-    let _val2_again1 = safe_lfu_test_fn(2);
-    let _val2_again2 = safe_lfu_test_fn(2);
-    let _val3_again1 = safe_lfu_test_fn(3);
-    assert_eq!(
-        COUNTER_LFU.with(|c| c.get()),
-        3,
-        "Repeated cache hits should not execute function"
-    );
+    let result2_again = block_on(backend.get(&key2)).unwrap();
+    assert!(result2_again.is_some(), "Key2 should still be in cache");
+    assert_eq!(result2_again.unwrap(), val2);
+    let result3 = block_on(backend.get(&key3)).unwrap();
+    assert!(result3.is_some(), "Key3 should be in cache");
+    assert_eq!(result3.unwrap(), val3);
 
-    let val4 = safe_lfu_test_fn(4);
-    assert_eq!(val4, 40);
-    assert_eq!(
-        COUNTER_LFU.with(|c| c.get()),
-        4,
-        "Adding new item should execute function once"
-    );
-
-    let val2_final = safe_lfu_test_fn(2);
-    let val3_final = safe_lfu_test_fn(3);
-    let val4_final = safe_lfu_test_fn(4);
-    let val1_final = safe_lfu_test_fn(1);
-
-    assert_eq!(val2_final, 20);
-    assert_eq!(val3_final, 30);
-    assert_eq!(val4_final, 40);
-    assert_eq!(val1_final, 10);
-
-    let final_count = COUNTER_LFU.with(|c| c.get());
-    assert_eq!(
-        final_count, 5,
-        "Expected 5 total executions (3 initial + 1 new item + 1 evicted), got {}",
-        final_count
-    );
+    let result1_again = block_on(backend.get(&key1)).unwrap();
+    assert!(result1_again.is_none(), "Key1 should have been evicted");
 }

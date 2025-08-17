@@ -1,4 +1,8 @@
-//! Minimal test to isolate memory safety issues in fncache
+//! Basic cache safety tests
+//!
+//! This file contains targeted tests for basic memory safety, cache initialization,
+//! and cache reset functionality. These tests verify fundamental safety properties
+//! of the caching system without the complexity of the full test suite.
 
 use fncache::{init_global_cache, reset_global_cache_for_testing, MemoryBackend};
 use fncache_macros::fncache;
@@ -6,7 +10,7 @@ use serial_test::serial;
 
 #[test]
 #[serial]
-fn test_minimal_cache_usage() {
+fn test_basic_cache_functionality() {
     reset_global_cache_for_testing();
     let _ = init_global_cache(MemoryBackend::new());
 
@@ -26,7 +30,7 @@ fn test_minimal_cache_usage() {
 
 #[test]
 #[serial]
-fn test_cache_reset_cycle() {
+fn test_cache_reset_across_cycles() {
     for i in 0..3 {
         reset_global_cache_for_testing();
         let _ = init_global_cache(MemoryBackend::new());

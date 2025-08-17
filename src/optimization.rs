@@ -181,11 +181,9 @@ impl<B: CacheBackend> Prefetcher<B> {
         T: 'static,
     {
         let items = pattern_fn();
-        
-        // Limit the number of items to prefetch
+
         let items = items.into_iter().take(self.max_items);
-        
-        // Prefetch items in parallel
+
         futures::future::try_join_all(
             items.map(|(key, value)| {
                 let backend = &self.backend;
@@ -353,19 +351,17 @@ mod tests {
     #[test]
     fn test_cache_stats() {
         let stats = CacheStats::new();
-        
-        // Record some hits and misses
+
         stats.record_hit(1_000_000); // 1ms
         stats.record_hit(2_000_000); // 2ms
         stats.record_miss(5_000_000); // 5ms
-        
+
         assert_eq!(stats.hit_count(), 2);
         assert_eq!(stats.miss_count(), 1);
         assert_eq!(stats.hit_ratio(), 2.0 / 3.0);
         assert_eq!(stats.time_saved().as_nanos(), 3_000_000);
         assert_eq!(stats.average_execution_time().as_nanos(), 5_000_000);
-        
-        // Test reset
+
         stats.reset();
         assert_eq!(stats.hit_count(), 0);
         assert_eq!(stats.miss_count(), 0);
@@ -374,20 +370,17 @@ mod tests {
     #[test]
     fn test_adaptive_ttl() {
         let adaptive_ttl = AdaptiveTtl::new(60, 10, 3600);
-        
-        // Base TTL for low access count
+
         assert_eq!(adaptive_ttl.calculate_ttl(0).as_secs(), 60);
         assert_eq!(adaptive_ttl.calculate_ttl(4).as_secs(), 60);
-        
-        // Increased TTL for higher access count
+
         let ttl_6 = adaptive_ttl.calculate_ttl(6).as_secs();
         let ttl_10 = adaptive_ttl.calculate_ttl(10).as_secs();
         
         assert!(ttl_6 > 60);
         assert!(ttl_10 > ttl_6);
-        
-        // Test max TTL cap
+
         let ttl_1000 = adaptive_ttl.calculate_ttl(1000).as_secs();
-        assert_eq!(ttl_1000, 3600); // Capped at max_ttl
+        assert_eq!(ttl_1000, 3600);
     }
 }

@@ -68,10 +68,48 @@ rand = "0.8"
 [lib]
 proc-macro = false
 
+[profile.bench]
+opt-level = 3
+debug = true
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+# Benchmark harness settings
+[[bench]]
+name = "cache_benchmarks"
+harness = false
+
+[[bench]]
+name = "simple_bench"
+harness = false
+
 [[example]]
-name = "basic"
+name = "getting_started"
 required-features = ["memory"]
 
 [[example]]
-name = "async"
+name = "sync_vs_async_functions"
 required-features = ["memory"]
+
+[[example]]
+name = "backend_memory"
+required-features = ["memory"]
+
+[[example]]
+name = "backend_file"
+required-features = ["file-backend"]
+
+[[example]]
+name = "cache_invalidation"
+required-features = ["memory"]
+
+[[example]]
+name = "error_handling"
+required-features = ["memory"]
+
+[[example]]
+name = "key_derivation"
+required-features = ["memory", "compile-time-keys"]
+

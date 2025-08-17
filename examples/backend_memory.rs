@@ -48,21 +48,18 @@ fn main() -> Result<()> {
     {
         println!("\n--- Memory Backend with LRU Policy ---");
         let backend = MemoryBackend::new()
-            .with_capacity(10) // Small capacity to demonstrate eviction
-            .with_eviction_policy("lru"); // Use the built-in eviction policy factory
+            .with_capacity(10)
+            .with_eviction_policy("lru");
         init_global_cache(backend)?;
 
-        // Fill cache
         for i in 0..15 {
             compute_value(i);
         }
 
-        // Access some items to update LRU order
         compute_value(5);
         compute_value(7);
         compute_value(9);
 
-        // Check which ones stay in cache (would see in console output)
         for i in 0..15 {
             compute_value(i);
         }
@@ -72,11 +69,10 @@ fn main() -> Result<()> {
     {
         println!("\n--- Memory Backend with LFU Policy ---");
         let backend = MemoryBackend::new()
-            .with_capacity(10) // Small capacity to demonstrate eviction
-            .with_eviction_policy("lfu"); // Use the built-in eviction policy factory
+            .with_capacity(10)
+            .with_eviction_policy("lfu");
         init_global_cache(backend)?;
 
-        // Fill cache and access some items more frequently
         for _ in 0..3 {
             compute_value(1);
             compute_value(3);
@@ -87,7 +83,6 @@ fn main() -> Result<()> {
             compute_value(i);
         }
 
-        // Check which ones stay in cache (would see in console output)
         for i in 0..15 {
             compute_value(i);
         }

@@ -121,10 +121,10 @@ fn main() -> Result<()> {
 
 ## Performance
 
-- **Memory Backend**: ~10ns cache hit latency
+- **Memory Backend**: ~1-2μs set latency, ~850-970μs get hit latency
 - **Redis Backend**: ~1ms cache hit latency (network dependent)
 - **File Backend**: ~100μs cache hit latency
-- **Throughput**: >1M operations/second (memory backend)
+- **Throughput**: Thousands of operations/second (memory backend)
 
 See `benches/` for detailed benchmarks.
 

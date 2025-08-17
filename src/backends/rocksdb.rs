@@ -136,11 +136,9 @@ impl RocksDBBackend {
     /// # Errors
     /// Returns an error if the RocksDB database could not be opened
     pub fn new<P: AsRef<Path>>(db_path: P) -> Result<Self> {
-        // Create RocksDB options
         let mut options = Options::default();
         options.create_if_missing(true);
 
-        // Open the database
         let db = DB::open(&options, db_path)
             .map_err(|e| Error::Backend(format!("Failed to open RocksDB: {}", e)))?;
 
@@ -150,7 +148,6 @@ impl RocksDBBackend {
         })
     }
 
-    /// Check if a cache entry is expired
     fn is_expired(entry: &CacheEntry) -> bool {
         if let Some(expires_at) = entry.expires_at {
             SystemTime::now() > expires_at
@@ -171,53 +168,40 @@ impl RocksDBBackend {
 #[async_trait]
 impl CacheBackend for RocksDBBackend {
     async fn get(&self, key: &String) -> Result<Option<Vec<u8>>> {
-        // Try to get the value from RocksDB
         match self.db.get(key.as_bytes()) {
-            Ok(Some(bytes)) => {
-                // Deserialize the entry
-                match bincode::deserialize::<CacheEntry>(&bytes) {
-                    Ok(entry) => {
-                        // Check if entry is expired
-                        if Self::is_expired(&entry) {
-                            // Entry is expired, remove it
-                            if let Err(e) = self.db.delete(key.as_bytes()) {
-                                return Err(Error::Backend(format!(
-                                    "Failed to delete expired key: {}",
-                                    e
-                                )));
-                            }
-                            self.metrics.record_miss();
-                            Ok(None)
-                        } else {
-                            // Entry is valid
-                            self.metrics.record_hit();
-                            Ok(Some(entry.value))
+            Ok(Some(bytes)) => match bincode::deserialize::<CacheEntry>(&bytes) {
+                Ok(entry) => {
+                    if Self::is_expired(&entry) {
+                        if let Err(e) = self.db.delete(key.as_bytes()) {
+                            return Err(Error::Backend(format!(
+                                "Failed to delete expired key: {}",
+                                e
+                            )));
                         }
-                    }
-                    Err(e) => {
-                        // Deserialization error
                         self.metrics.record_miss();
-                        Err(Error::Codec(format!(
-                            "Failed to deserialize cache entry: {}",
-                            e
-                        )))
+                        Ok(None)
+                    } else {
+                        self.metrics.record_hit();
+                        Ok(Some(entry.value))
                     }
                 }
-            }
+                Err(e) => {
+                    self.metrics.record_miss();
+                    Err(Error::Codec(format!(
+                        "Failed to deserialize cache entry: {}",
+                        e
+                    )))
+                }
+            },
             Ok(None) => {
-                // Key doesn't exist
                 self.metrics.record_miss();
                 Ok(None)
             }
-            Err(e) => {
-                // Database error
-                Err(Error::Backend(format!("RocksDB error: {}", e)))
-            }
+            Err(e) => Err(Error::Backend(format!("RocksDB error: {}", e))),
         }
     }
 
     async fn set(&self, key: String, value: Vec<u8>, ttl: Option<Duration>) -> Result<()> {
-        // Create the cache entry
         let expires_at = ttl.map(|duration| {
             SystemTime::now()
                 .checked_add(duration)
@@ -226,11 +210,9 @@ impl CacheBackend for RocksDBBackend {
 
         let entry = CacheEntry { value, expires_at };
 
-        // Serialize the entry
         let bytes = bincode::serialize(&entry)
             .map_err(|e| Error::Codec(format!("Failed to serialize cache entry: {}", e)))?;
 
-        // Store in RocksDB
         self.db
             .put(key.as_bytes(), bytes)
             .map_err(|e| Error::Backend(format!("Failed to store in RocksDB: {}", e)))?;
@@ -249,38 +231,26 @@ impl CacheBackend for RocksDBBackend {
 
     async fn contains_key(&self, key: &String) -> Result<bool> {
         match self.db.get(key.as_bytes()) {
-            Ok(Some(bytes)) => {
-                // Deserialize to check if expired
-                match bincode::deserialize::<CacheEntry>(&bytes) {
-                    Ok(entry) => {
-                        if Self::is_expired(&entry) {
-                            // Entry is expired, consider it doesn't exist
-                            Ok(false)
-                        } else {
-                            Ok(true)
-                        }
-                    }
-                    Err(_) => {
-                        // Corrupted entry, consider it doesn't exist
+            Ok(Some(bytes)) => match bincode::deserialize::<CacheEntry>(&bytes) {
+                Ok(entry) => {
+                    if Self::is_expired(&entry) {
                         Ok(false)
+                    } else {
+                        Ok(true)
                     }
                 }
-            }
+                Err(_) => Ok(false),
+            },
             Ok(None) => Ok(false),
             Err(e) => Err(Error::Backend(format!("RocksDB error: {}", e))),
         }
     }
 
     async fn clear(&self) -> Result<()> {
-        // Iterate through all keys and delete them
-        // This is not atomic but RocksDB doesn't provide a "clear all" operation
-
         let iter = self.db.iterator(rocksdb::IteratorMode::Start);
 
-        // Collect keys first to avoid mutating while iterating
         let keys: Vec<Vec<u8>> = iter.map(|item| item.unwrap().0.to_vec()).collect();
 
-        // Delete all keys
         for key in keys {
             if let Err(e) = self.db.delete(&key) {
                 return Err(Error::Backend(format!(
@@ -312,17 +282,13 @@ mod tests {
         let key = "test_key".to_string();
         let value = b"test_value".to_vec();
 
-        // Set value
         backend.set(key.clone(), value.clone(), None).await.unwrap();
 
-        // Get value
         let result = backend.get(&key).await.unwrap();
         assert_eq!(result, Some(value));
 
-        // Contains key
         assert!(backend.contains_key(&key).await.unwrap());
 
-        // Remove key
         backend.remove(&key).await.unwrap();
         assert_eq!(backend.get(&key).await.unwrap(), None);
         assert!(!backend.contains_key(&key).await.unwrap());
@@ -339,19 +305,15 @@ mod tests {
         let key = "test_ttl".to_string();
         let value = b"test_value".to_vec();
 
-        // Set with short TTL
         backend
             .set(key.clone(), value, Some(Duration::from_millis(100)))
             .await
             .unwrap();
 
-        // Get immediately - should exist
         assert!(backend.get(&key).await.unwrap().is_some());
 
-        // Wait for expiration
         sleep(Duration::from_millis(150)).await;
 
-        // Get after expiration - should be gone
         assert!(backend.get(&key).await.unwrap().is_none());
     }
 
@@ -367,7 +329,6 @@ mod tests {
         let key2 = "test_key2".to_string();
         let value = b"test_value".to_vec();
 
-        // Set multiple values
         backend
             .set(key1.clone(), value.clone(), None)
             .await
@@ -377,14 +338,10 @@ mod tests {
             .await
             .unwrap();
 
-        // Verify both exist
         assert!(backend.contains_key(&key1).await.unwrap());
         assert!(backend.contains_key(&key2).await.unwrap());
 
-        // Clear all values
         backend.clear().await.unwrap();
-
-        // Verify both gone
         assert!(!backend.contains_key(&key1).await.unwrap());
         assert!(!backend.contains_key(&key2).await.unwrap());
     }
@@ -400,18 +357,14 @@ mod tests {
         let key = "test_metrics".to_string();
         let value = b"test_value".to_vec();
 
-        // Initial metrics
         assert_eq!(backend.metrics.hits(), 0);
         assert_eq!(backend.metrics.misses(), 0);
 
-        // Miss (key doesn't exist)
         assert!(backend.get(&key).await.unwrap().is_none());
         assert_eq!(backend.metrics.misses(), 1);
 
-        // Set key
         backend.set(key.clone(), value, None).await.unwrap();
 
-        // Hit (key exists)
         assert!(backend.get(&key).await.unwrap().is_some());
         assert_eq!(backend.metrics.hits(), 1);
     }

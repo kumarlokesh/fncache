@@ -68,14 +68,12 @@ impl NonSerializable {
 #[fncache(ttl = 60)]
 fn process_point(x: i32, y: i32) -> Point {
     println!("Processing point ({}, {})...", x, y);
-    // In real code, we would do something with NonSerializable here
     let non_serializable = NonSerializable::new(x, y);
     std::thread::sleep(std::time::Duration::from_millis(500));
     non_serializable.point
 }
 
 fn main() -> Result<()> {
-    // Initialize cache
     init_global_cache(MemoryBackend::new())?;
 
     println!("Error Handling Examples");
