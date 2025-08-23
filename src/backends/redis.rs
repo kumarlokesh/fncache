@@ -54,7 +54,6 @@
 
 use crate::{backends::CacheBackend, error::Error, metrics::Metrics, Result};
 use async_trait::async_trait;
-use redis::aio::Connection;
 use redis::{AsyncCommands, Client, RedisError};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -138,7 +137,7 @@ impl RedisBackend {
         let client = Client::open(redis_url)
             .map_err(|e| Error::Backend(format!("Failed to create Redis client: {}", e)))?;
 
-        let mut conn = client
+        let _ = client
             .get_async_connection()
             .await
             .map_err(|e| Error::Backend(format!("Failed to connect to Redis: {}", e)))?;
@@ -234,7 +233,7 @@ impl CacheBackend for RedisBackend {
         let json_str = serde_json::to_string(&entry)
             .map_err(|e| Error::Codec(format!("Failed to serialize cache entry: {}", e)))?;
 
-        let result = match ttl {
+        let result: redis::RedisResult<()> = match ttl {
             Some(duration) => {
                 let ttl_secs = Self::duration_to_ttl_secs(duration);
                 conn.set_ex(redis_key, json_str, ttl_secs as usize).await

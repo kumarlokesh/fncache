@@ -54,7 +54,7 @@ use crate::{backends::CacheBackend, error::Error, metrics::Metrics, Result};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, create_dir_all, File},
-    io::{self, Read, Write},
+    io::{self, Write},
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, SystemTime},

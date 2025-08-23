@@ -8,13 +8,13 @@ A zero-boilerplate Rust library for function-level caching with pluggable backen
 
 ## Features
 
-- **🚀 Zero Boilerplate**: Simple `#[fncache]` attribute for instant caching
-- **🔌 Pluggable Backends**: Memory, File, Redis, RocksDB support
-- **⚡ Async/Sync**: Seamless support for both synchronous and asynchronous functions
-- **🛡️ Type Safety**: Strong typing throughout the caching layer with compile-time guarantees
-- **📊 Advanced Metrics**: Built-in instrumentation with latency, hit rates, and size tracking
-- **🏷️ Cache Invalidation**: Tag-based and prefix-based cache invalidation
-- **🔥 Background Warming**: Proactive cache population for improved performance
+- **Zero Boilerplate**: Simple `#[fncache]` attribute for instant caching
+- **Pluggable Backends**: Memory, File, Redis, RocksDB support
+- **Async/Sync**: Seamless support for both synchronous and asynchronous functions
+- **Type Safety**: Strong typing throughout the caching layer with compile-time guarantees
+- **Advanced Metrics**: Built-in instrumentation with latency, hit rates, and size tracking
+- **Cache Invalidation**: Tag-based and prefix-based cache invalidation
+- **Background Warming**: Proactive cache population for improved performance
 
 ## Quick Start
 
@@ -22,7 +22,9 @@ Add `fncache` to your `Cargo.toml` with the desired features:
 
 ```toml
 [dependencies]
-fncache = { version = "0.1", features = ["memory"] }
+fncache = { version = "0.1.1", features = ["memory"] }
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
 ```
 
 ### Basic Usage
@@ -34,6 +36,7 @@ use fncache::{
     fncache,
     Result,
 };
+use std::time::Instant;
 
 #[fncache(ttl = 60)]
 fn expensive_operation(x: u64) -> u64 {
@@ -48,16 +51,22 @@ async fn main() -> Result<()> {
     init_global_cache(MemoryBackend::new())?;
     
     // First call executes the function
+    let t1 = Instant::now();
     let result1 = expensive_operation(5);
-    println!("Result 1: {}", result1); // Takes ~1 second
+    let d1 = t1.elapsed();
+    println!("Result 1: {} (took {:?})", result1, d1); // ~1s
     
     // Second call returns cached result
+    let t2 = Instant::now();
     let result2 = expensive_operation(5);
-    println!("Result 2: {}", result2); // Returns immediately
+    let d2 = t2.elapsed();
+    println!("Result 2: {} (took {:?})", result2, d2); // microseconds
     
     Ok(())
 }
 ```
+
+Note: The first call performs the real work (~1s here). Subsequent calls with the same arguments return the cached result in microseconds.
 
 ### Async Function Example
 
@@ -75,32 +84,15 @@ async fn fetch_data(id: &str) -> String {
 
 ## Backend Examples
 
-### Redis Backend
+- **Memory backend**: see `examples/backend_memory.rs`
+  - Run: `cargo run --example backend_memory`
 
-```rust
-use fncache::backends::redis::RedisBackend;
+- **File backend**: see `examples/backend_file.rs`
+  - Run: `cargo run --example backend_file --features file-backend`
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let backend = RedisBackend::new("redis://localhost:6379")?;
-    init_global_cache(backend)?;
-    
-    // Your cached functions work the same way
-    Ok(())
-}
-```
-
-### File Backend
-
-```rust
-use fncache::backends::file::FileBackend;
-
-fn main() -> Result<()> {
-    let backend = FileBackend::new("/tmp/cache")?;
-    init_global_cache(backend)?;
-    Ok(())
-}
-```
+- **Redis backend**: see `examples/backend_redis.rs`
+  - Requires a running Redis server at `redis://127.0.0.1:6379`
+  - Run: `cargo run --example backend_redis --features redis-backend`
 
 ## Available Features
 

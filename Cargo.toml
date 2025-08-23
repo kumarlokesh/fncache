@@ -113,3 +113,6 @@ required-features = ["memory"]
 name = "key_derivation"
 required-features = ["memory", "compile-time-keys"]
 
+[[example]]
+name = "backend_redis"
+required-features = ["redis-backend"]

@@ -6,12 +6,6 @@
 //! NOTE: This example requires the "file-backend" feature to be enabled.
 //! Run with: cargo run --example backend_file --features file-backend
 
-#[cfg(not(feature = "file-backend"))]
-compile_error!(
-    "This example requires the 'file-backend' feature to be enabled. \
-                Run with: cargo run --example backend_file --features file-backend"
-);
-
 #[cfg(feature = "file-backend")]
 use fncache::{backends::file::FileBackend, fncache, init_global_cache, Result};
 
@@ -25,8 +19,9 @@ fn compute_expensive_value(input: u32) -> u32 {
 
 #[cfg(not(feature = "file-backend"))]
 fn main() {
-    // This function will never be called due to the compile_error above
-    // but is needed for the example to have a main function
+    eprintln!(
+        "This example requires the 'file-backend' feature.\nRun with: cargo run --example backend_file --features file-backend"
+    );
 }
 
 #[cfg(feature = "file-backend")]
