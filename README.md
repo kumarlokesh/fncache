@@ -107,9 +107,9 @@ async fn fetch_data(id: &str) -> String {
 
 ## Requirements
 
-- **Rust**: 1.70 or later
-- **Runtime**: `tokio` for async support
-- **Dependencies**: Automatically managed via features
+- **Rust**: 1.70+
+- **Runtime**: `tokio` only if you use async cached functions or run async examples
+- **Features/Backends**: enable via Cargo features (see table above)
 
 ## Performance
 
@@ -122,7 +122,7 @@ See `benches/` for detailed benchmarks.
 
 ## Documentation
 
-- **[Architecture](ARCHITECTURE.md)** - Internal design and architecture
+- [Architecture](ARCHITECTURE.md) - Internal design and architecture
 
 ## Changelog
 

@@ -1,6 +1,6 @@
-//! # FnCache Benchmarks
+//! # FnCache Benchmarks (Core)
 //!
-//! This benchmark suite measures the performance of various cache operations
+//! This core benchmark suite measures the performance of various cache operations
 //! across different backends and scenarios. The benchmarks are designed to help
 //! evaluate:
 //!
@@ -22,14 +22,17 @@
 //! * **Eviction policies**: LRU typically has better throughput than LFU but may
 //!   have worse cache hit rates for certain access patterns.
 //!
-//! ## Running Benchmarks
+//! Backend-specific benches for File, Redis, and RocksDB live in
+//! `benches/file_bench.rs`, `benches/redis_bench.rs`, and `benches/rocksdb_bench.rs`.
+//!
+//! ## Running (core suite)
 //!
 //! ```bash
-//! # Run all benchmarks
-//! cargo bench --features "file-backend"
+//! # Run all core benchmarks
+//! cargo bench --bench core_benchmarks
 //!
-//! # Run only memory backend benchmarks
-//! cargo bench --features "file-backend" -- memory_backend
+//! # Filter by a specific group/pattern
+//! cargo bench --bench core_benchmarks -- memory_backend
 //! ```
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, SamplingMode};
@@ -43,17 +46,6 @@ use std::time::Duration;
 use fncache::backends::memory::{MemoryBackend, MemoryBackendConfig};
 use fncache::backends::CacheBackend;
 
-#[cfg(feature = "file-backend")]
-use fncache::backends::file::FileBackend;
-#[cfg(feature = "file-backend")]
-use tempfile::TempDir;
-
-#[cfg(feature = "redis-backend")]
-use fncache::backends::redis::RedisBackend;
-
-#[cfg(feature = "rocksdb-backend")]
-use fncache::backends::rocksdb::RocksDBBackend;
-
 const SMALL_DATA_SIZE: usize = 100;
 const MEDIUM_DATA_SIZE: usize = 1000;
 const LARGE_DATA_SIZE: usize = 10000;
@@ -64,9 +56,6 @@ const MEASUREMENT_TIME_MS: u64 = 2000;
 const WARMUP_TIME_MS: u64 = 500;
 const MIN_SAMPLE_SIZE: usize = 10;
 
-#[cfg(feature = "redis-backend")]
-const REDIS_URL: &str = "redis://127.0.0.1:6379";
-
 const DEFAULT_TTL_SECONDS: u64 = 60;
 
 const RNG_SEED_SET: u64 = 42;
@@ -74,12 +63,10 @@ const RNG_SEED_GET_MISS: u64 = 43;
 const RNG_SEED_REMOVE: u64 = 44;
 const RNG_SEED_TTL: u64 = 45;
 
-/// Generate test data of specified size
 fn generate_data(size: usize) -> Vec<u8> {
     (0..size).map(|i| (i % 256) as u8).collect()
 }
 
-/// Configure a benchmark group with standard measurement parameters
 fn configure_benchmark_group(
     group: &mut criterion::BenchmarkGroup<criterion::measurement::WallTime>,
     large_dataset: bool,
@@ -90,7 +77,6 @@ fn configure_benchmark_group(
     group.sample_size(MIN_SAMPLE_SIZE);
 }
 
-/// Helper function to run a cache set benchmark
 fn bench_cache_set<B: CacheBackend + 'static>(
     group: &mut criterion::BenchmarkGroup<criterion::measurement::WallTime>,
     backend: Arc<B>,
@@ -106,7 +92,6 @@ fn bench_cache_set<B: CacheBackend + 'static>(
     });
 }
 
-/// Helper function to run a cache get hit benchmark
 fn bench_cache_get_hit<B: CacheBackend + 'static>(
     group: &mut criterion::BenchmarkGroup<criterion::measurement::WallTime>,
     backend: Arc<B>,
@@ -119,7 +104,6 @@ fn bench_cache_get_hit<B: CacheBackend + 'static>(
     });
 }
 
-/// Helper function to run a cache get miss benchmark
 fn bench_cache_get_miss<B: CacheBackend + 'static>(
     group: &mut criterion::BenchmarkGroup<criterion::measurement::WallTime>,
     backend: Arc<B>,
@@ -131,7 +115,6 @@ fn bench_cache_get_miss<B: CacheBackend + 'static>(
     });
 }
 
-/// Helper function to run a cache remove benchmark
 fn bench_cache_remove<B: CacheBackend + 'static>(
     group: &mut criterion::BenchmarkGroup<criterion::measurement::WallTime>,
     backend: Arc<B>,
@@ -150,7 +133,6 @@ fn bench_cache_remove<B: CacheBackend + 'static>(
     });
 }
 
-/// Helper function to run a cache set with TTL benchmark
 fn bench_cache_set_ttl<B: CacheBackend + 'static>(
     group: &mut criterion::BenchmarkGroup<criterion::measurement::WallTime>,
     backend: Arc<B>,
@@ -170,7 +152,6 @@ fn bench_cache_set_ttl<B: CacheBackend + 'static>(
     });
 }
 
-/// Test data structure for benchmarks
 #[derive(Serialize, Deserialize, Clone)]
 struct TestData {
     id: u64,
@@ -178,7 +159,6 @@ struct TestData {
     values: Vec<u32>,
 }
 
-/// Generate test data structure of specified complexity
 fn generate_test_data(complexity: usize) -> TestData {
     TestData {
         id: 12345,
@@ -366,100 +346,11 @@ fn memory_backend_benchmarks(c: &mut Criterion) {
     bench_ttl_operations(c, backend, "memory_lfu");
 }
 
-#[cfg(feature = "file-backend")]
-fn file_backend_benchmarks(c: &mut Criterion) {
-    let temp_dir = TempDir::new().unwrap();
-    let backend = FileBackend::new(temp_dir.path().to_str().unwrap()).unwrap();
-
-    bench_basic_operations(c, backend, "file_backend");
-
-    let backend = FileBackend::new(temp_dir.path().to_str().unwrap()).unwrap();
-    bench_ttl_operations(c, backend, "file_backend");
-}
-
-#[cfg(feature = "redis-backend")]
-fn redis_backend_benchmarks(c: &mut Criterion) {
-    match RedisBackend::new(REDIS_URL) {
-        Ok(backend) => match block_on(backend.clear()) {
-            Ok(_) => {
-                bench_basic_operations(c, backend, "redis_backend");
-
-                match RedisBackend::new(REDIS_URL) {
-                    Ok(ttl_backend) => {
-                        bench_ttl_operations(c, ttl_backend, "redis_backend");
-                    }
-                    Err(e) => {
-                        eprintln!("Error creating Redis backend for TTL benchmarks: {:?}", e);
-                        eprintln!("Make sure Redis server is running at {}", REDIS_URL);
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("Error clearing Redis database: {:?}", e);
-                eprintln!("Skipping Redis benchmarks due to database clear failure");
-            }
-        },
-        Err(e) => {
-            eprintln!(
-                "Skipping Redis benchmarks: server not available at {}",
-                REDIS_URL
-            );
-            eprintln!("Error details: {:?}", e);
-        }
-    }
-}
-
-#[cfg(feature = "rocksdb-backend")]
-fn rocksdb_backend_benchmarks(c: &mut Criterion) {
-    match TempDir::new() {
-        Ok(temp_dir) => {
-            let db_path = temp_dir.path().to_str().unwrap_or_else(|| {
-                eprintln!("Error: Unable to convert temp directory path to string");
-                "./rocksdb_temp"
-            });
-
-            match RocksDBBackend::new(db_path) {
-                Ok(backend) => {
-                    bench_basic_operations(c, backend, "rocksdb_backend");
-
-                    let ttl_path = format!("{}_ttl", db_path);
-                    match RocksDBBackend::new(&ttl_path) {
-                        Ok(ttl_backend) => {
-                            bench_ttl_operations(c, ttl_backend, "rocksdb_backend");
-                        }
-                        Err(e) => {
-                            eprintln!("Error creating RocksDB backend for TTL benchmarks: {:?}", e);
-                            eprintln!("Path attempted: {}", ttl_path);
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Error creating RocksDB backend: {:?}", e);
-                    eprintln!("Make sure RocksDB dependencies are properly installed");
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Failed to create temporary directory for RocksDB: {:?}", e);
-            eprintln!("Skipping RocksDB benchmarks due to filesystem error");
-        }
-    }
-}
-
 criterion_group!(
     benches,
     memory_backend_benchmarks,
     bench_key_serialization,
     bench_eviction_policies
 );
-
-#[cfg(feature = "file-backend")]
-criterion_group!(file_benches, file_backend_benchmarks);
-
-#[cfg(feature = "redis-backend")]
-criterion_group!(redis_benches, redis_backend_benchmarks);
-
-#[cfg(feature = "rocksdb-backend")]
-criterion_group!(rocksdb_benches, rocksdb_backend_benchmarks);
 
 criterion_main!(benches);

@@ -54,9 +54,10 @@
 
 use crate::{backends::CacheBackend, error::Error, metrics::Metrics, Result};
 use async_trait::async_trait;
-use redis::{AsyncCommands, Client, RedisError};
+use redis::{aio::ConnectionManager, AsyncCommands, Client, RedisError};
 use serde::{Deserialize, Serialize};
 use std::{
+    fmt,
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -111,10 +112,10 @@ struct CacheEntry {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct RedisBackend {
-    /// Redis client
-    client: Client,
+    /// Redis async connection manager (multiplexed, cloneable)
+    manager: ConnectionManager,
     /// Key prefix for all cache entries
     prefix: String,
     /// Cache metrics
@@ -136,39 +137,42 @@ impl RedisBackend {
     pub async fn new(redis_url: &str, prefix: Option<&str>) -> Result<Self> {
         let client = Client::open(redis_url)
             .map_err(|e| Error::Backend(format!("Failed to create Redis client: {}", e)))?;
-
-        let _ = client
-            .get_async_connection()
+        let manager = client
+            .get_tokio_connection_manager()
             .await
             .map_err(|e| Error::Backend(format!("Failed to connect to Redis: {}", e)))?;
 
         Ok(Self {
-            client,
+            manager,
             prefix: prefix.unwrap_or("fncache:").to_string(),
             metrics: Arc::new(Metrics::new()),
         })
     }
 
-    /// Generate a prefixed key for Redis storage
     fn prefixed_key(&self, key: &str) -> String {
         format!("{}{}", self.prefix, key)
     }
 
-    /// Convert Redis errors to fncache errors
     fn convert_redis_error(err: RedisError) -> Error {
         Error::Backend(format!("Redis error: {}", err))
     }
 
-    /// Convert a system time to Unix timestamp in seconds
     fn system_time_to_timestamp(time: SystemTime) -> u64 {
         time.duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_else(|_| Duration::from_secs(0))
             .as_secs()
     }
 
-    /// Calculate the TTL in seconds from a duration
     fn duration_to_ttl_secs(duration: Duration) -> i64 {
         duration.as_secs() as i64
+    }
+}
+
+impl fmt::Debug for RedisBackend {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RedisBackend")
+            .field("prefix", &self.prefix)
+            .finish()
     }
 }
 
@@ -184,11 +188,7 @@ impl RedisBackend {
 impl CacheBackend for RedisBackend {
     async fn get(&self, key: &String) -> Result<Option<Vec<u8>>> {
         let redis_key = self.prefixed_key(key);
-        let mut conn = self
-            .client
-            .get_async_connection()
-            .await
-            .map_err(|e| Error::Backend(format!("Failed to connect to Redis: {}", e)))?;
+        let mut conn = self.manager.clone();
 
         let result: redis::RedisResult<Option<String>> = conn.get(&redis_key).await;
 
@@ -219,11 +219,7 @@ impl CacheBackend for RedisBackend {
 
     async fn set(&self, key: String, value: Vec<u8>, ttl: Option<Duration>) -> Result<()> {
         let redis_key = self.prefixed_key(&key);
-        let mut conn = self
-            .client
-            .get_async_connection()
-            .await
-            .map_err(|e| Error::Backend(format!("Failed to connect to Redis: {}", e)))?;
+        let mut conn = self.manager.clone();
 
         let entry = CacheEntry {
             value,
@@ -252,11 +248,7 @@ impl CacheBackend for RedisBackend {
 
     async fn remove(&self, key: &String) -> Result<()> {
         let redis_key = self.prefixed_key(key);
-        let mut conn = self
-            .client
-            .get_async_connection()
-            .await
-            .map_err(|e| Error::Backend(format!("Failed to connect to Redis: {}", e)))?;
+        let mut conn = self.manager.clone();
 
         let result: redis::RedisResult<i64> = conn.del(redis_key).await;
 
@@ -268,11 +260,7 @@ impl CacheBackend for RedisBackend {
 
     async fn contains_key(&self, key: &String) -> Result<bool> {
         let redis_key = self.prefixed_key(key);
-        let mut conn = self
-            .client
-            .get_async_connection()
-            .await
-            .map_err(|e| Error::Backend(format!("Failed to connect to Redis: {}", e)))?;
+        let mut conn = self.manager.clone();
 
         let result: redis::RedisResult<bool> = conn.exists(redis_key).await;
 
@@ -283,11 +271,7 @@ impl CacheBackend for RedisBackend {
     }
 
     async fn clear(&self) -> Result<()> {
-        let mut conn = self
-            .client
-            .get_async_connection()
-            .await
-            .map_err(|e| Error::Backend(format!("Failed to connect to Redis: {}", e)))?;
+        let mut conn = self.manager.clone();
 
         let pattern = format!("{}*", self.prefix);
         let keys: redis::RedisResult<Vec<String>> = redis::cmd("KEYS")
