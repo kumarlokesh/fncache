@@ -6,7 +6,7 @@ members = [
 
 [package]
 name = "fncache"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 rust-version = "1.70"
 authors = ["Lokesh Kumar <lkumar94@gmail.com>"]
@@ -30,12 +30,11 @@ test-utils = []
 wasm = ["wasm-bindgen", "web-sys", "js-sys", "memory"]
 
 [dependencies]
-# Core dependencies
 async-trait = "0.1.72"
 thiserror = "1.0.50"
-serde = { version = "1.0.188", features = ["derive"], optional = true } # Optional but in default features
+serde = { version = "1.0.188", features = ["derive"], optional = true }
 serde_json = { version = "1.0.107", optional = true }
-fncache-macros = { path = "./fncache-macros", version = "0.1.1" }
+fncache-macros = { version = "0.1.2" }
 futures = { version = "0.3.28" }
 
 # Backend dependencies
@@ -125,3 +124,7 @@ required-features = ["memory", "compile-time-keys"]
 [[example]]
 name = "backend_redis"
 required-features = ["redis-backend"]
+
+# Use local macros crate during development; crates.io users will resolve the published version.
+[patch.crates-io]
+fncache-macros = { path = "fncache-macros" }

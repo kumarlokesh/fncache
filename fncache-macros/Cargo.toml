@@ -1,6 +1,6 @@
 [package]
 name = "fncache-macros"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["Lokesh Kumar <lkumar94@gmail.com>"]
 description = "Procedural macros for the fncache crate"

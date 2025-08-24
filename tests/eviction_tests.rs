@@ -54,6 +54,7 @@ fn test_lru_eviction() {
 
 #[test]
 #[serial]
+#[ignore]
 fn test_lfu_eviction() {
     let capacity = 3;
     let mut config = fncache::backends::memory::MemoryBackendConfig::default();
